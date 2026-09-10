@@ -12,9 +12,14 @@ _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "name": ("name", "full name", "candidate name", "applicant name"),
     "email": ("email", "email address", "e-mail"),
     "phone": ("phone", "phone number", "mobile", "mobile number", "telephone"),
-    "location": ("city", "location", "current location", "address"),
+    "location": ("city", "location", "current location"),
     "linkedin": ("linkedin", "linkedin url", "linkedin profile"),
     "github": ("github", "github url", "github profile"),
+}
+
+_EXCLUSIONS: dict[str, tuple[str, ...]] = {
+    "name": ("company", "school", "university", "employer", "job title"),
+    "location": ("address", "street", "postal", "zip", "state", "country"),
 }
 
 
@@ -36,11 +41,18 @@ def build_field_values(profile: ResumeProfile) -> dict[str, str]:
 
 
 def classify_field(*labels: str) -> str | None:
-    """Map visible/attribute labels to a deterministic profile field."""
-    normalized = {_normalize(label) for label in labels if label.strip()}
+    """Map form attributes to a profile field with conservative matching."""
+    normalized = [_normalize(label) for label in labels if label.strip()]
     for field, aliases in _FIELD_ALIASES.items():
-        if any(_normalize(alias) in value or value in _normalize(alias) for value in normalized for alias in aliases):
-            return field
+        if any(exclusion in value for value in normalized for exclusion in _EXCLUSIONS.get(field, ())):
+            continue
+        for value in normalized:
+            if not value:
+                continue
+            for alias in aliases:
+                normalized_alias = _normalize(alias)
+                if value == normalized_alias or normalized_alias in value:
+                    return field
     return None
 
 
