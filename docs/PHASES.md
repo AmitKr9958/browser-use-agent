@@ -18,19 +18,27 @@ This repository keeps the official Browser Use source intact and adds an applica
 - Enumerate tabs as stable records containing index, target ID, title, and URL.
 - Locate by target ID, exact title/URL, or case-insensitive contains matching.
 - Reject ambiguous matches rather than guessing.
-- Select through Browser Use's `switch_to_tab()`.
+- Switch through Browser Use's public event-bus tab-switch API when a switch is required.
+- Avoid redundant switches when the requested target is already active.
 
 ## Phase 4 — Verified agent execution
 - Require a tab selector before agent execution.
-- Verify the Browser Use agent focus target after switching.
-- Re-verify target identity after execution.
+- Verify the selected target before the agent starts.
+- Run the Browser Use agent with configurable step and timeout limits.
+- Reconnect to Browser Harness after execution because Browser Use may reset its session.
+- Re-verify that the original stable target ID still exists after execution.
 - Keep URL/title as metadata only because navigation can legitimately change them.
 
 ## Phase 5 — Production hardening
-- Add unit tests for connection, selection, ambiguity, missing targets, and agent orchestration.
-- Add a CLI for tab inspection/selection.
-- Add GitHub Actions unit-test CI with no browser or API key requirement.
+- Unit-test connection, selection, ambiguity, missing targets, and agent orchestration.
+- Provide a CLI for tab inspection, deterministic selection, and agent execution.
+- Add GitHub Actions CI for tests, lint, type checking, and package verification.
 - Keep cloud authentication optional and local-first.
+- Keep the upstream Browser Use implementation isolated from application-layer changes.
+- Document the exact local operational flow and safety invariants.
 
 ## Exit criteria
-Phase 5 is complete when the unit suite passes, CI is green, and the local integration smoke test can list and select the user's real Browser Harness tabs without opening a second Chrome instance.
+The current production baseline is complete when the unit suite passes, CI is green, and the local integration smoke test can run a bounded Browser Use task against a real Browser Harness tab without opening a second Chrome instance.
+
+## Next extension points
+The application layer is intentionally ready for higher-level capabilities such as task templates, structured results, additional model providers, and richer tab-selection policies without modifying Browser Use internals.
