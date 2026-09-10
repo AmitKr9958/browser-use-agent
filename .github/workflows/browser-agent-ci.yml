@@ -1,0 +1,26 @@
+name: Browser Agent CI
+
+on:
+  push:
+    paths:
+      - 'browser_agent/**'
+      - 'tests/test_*.py'
+      - '.github/workflows/browser-agent-ci.yml'
+  pull_request:
+    paths:
+      - 'browser_agent/**'
+      - 'tests/test_*.py'
+      - '.github/workflows/browser-agent-ci.yml'
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.11'
+      - name: Install project
+        run: uv sync --dev
+      - name: Run browser-agent unit tests
+        run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py -q
