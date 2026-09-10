@@ -7,6 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from .documents import write_resume_docx
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot
@@ -56,11 +57,17 @@ async def _run(args: argparse.Namespace) -> int:
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
             output_dir.mkdir(parents=True, exist_ok=True)
-            resume_out = output_dir / "tailored_resume_draft.txt"
+            resume_txt = output_dir / "tailored_resume_draft.txt"
+            resume_docx = output_dir / "tailored_resume_draft.docx"
             cover_out = output_dir / "cover_letter.txt"
-            resume_out.write_text(plan.tailored_resume_text, encoding="utf-8")
+            resume_txt.write_text(plan.tailored_resume_text, encoding="utf-8")
+            write_resume_docx(plan.tailored_resume_text, resume_docx)
             cover_out.write_text(plan.cover_letter, encoding="utf-8")
-            artifact_paths = {"tailored_resume": str(resume_out), "cover_letter": str(cover_out)}
+            artifact_paths = {
+                "tailored_resume_text": str(resume_txt),
+                "tailored_resume_docx": str(resume_docx),
+                "cover_letter": str(cover_out),
+            }
         print(json.dumps({
             "success": True,
             "score": plan.match.score,
