@@ -92,6 +92,7 @@ bu = "browser_use.cli:main"
 browser = "browser_use.cli:main"
 browser-use-tui = "browser_use.cli:browser_use_tui_main"
 browser-agent = "browser_agent.cli:main"
+jobpilot = "browser_agent.jobpilot.cli:main"
 
 [build-system]
 requires = ["hatchling==1.32.0"]
