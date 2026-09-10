@@ -6,46 +6,46 @@ repos:
     rev: v1.5.0
     hooks:
       - id: yesqa
+        files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
     hooks:
-      - id: codespell # See pyproject.toml for args
+      - id: codespell
         additional_dependencies:
           - tomli
+        files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$|docs/.*\.md$)
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.20.0
     hooks:
       - id: pyupgrade
         args: [--py311-plus]
+        files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.10
     hooks:
       - id: ruff-check
-        args: [ --fix ]
+        args: [--fix]
         files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
       - id: ruff-format
         files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
-      # see pyproject.toml for more details on ruff config
 
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.404
     hooks:
-    - id: pyright
-      files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$)
+      - id: pyright
+        files: ^browser_agent/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      # check for basic syntax errors in python and data files
       - id: check-ast
       - id: check-toml
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict
-      # check for bad files and folders
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-case-conflict
@@ -54,12 +54,8 @@ repos:
       - id: mixed-line-ending
       - id: fix-byte-order-marker
       - id: end-of-file-fixer
-      # best practices enforcement
       - id: detect-private-key
-      # - id: check-docstring-first
       - id: debug-statements
       - id: forbid-submodules
       - id: check-added-large-files
         args: ["--maxkb=600"]
-      # - id: name-tests-test
-      #   args: ["--pytest-test-first"]
