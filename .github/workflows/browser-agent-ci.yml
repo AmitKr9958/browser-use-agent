@@ -14,6 +14,9 @@ on:
       - 'pyproject.toml'
       - '.github/workflows/browser-agent-ci.yml'
 
+permissions:
+  contents: read
+
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -25,9 +28,9 @@ jobs:
       - name: Install project
         run: uv sync --dev
       - name: Run browser-agent unit tests
-        run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py -q
+        run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py -q
       - name: Lint browser-agent layer
-        run: uv run ruff check browser_agent tests/test_tabs.py tests/test_connection.py tests/test_agent.py
+        run: uv run ruff check browser_agent tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py
       - name: Type-check browser-agent layer
         run: uv run pyright browser_agent
       - name: Build distribution
@@ -36,7 +39,9 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import glob, zipfile
+          import glob
+          import zipfile
+
           wheels = glob.glob('dist/*.whl')
           assert wheels, 'No wheel was produced'
           with zipfile.ZipFile(wheels[0]) as zf:
