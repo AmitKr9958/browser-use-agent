@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
+import inspect
 from typing import Any, cast
 
 from browser_use import Agent, ChatGoogle
@@ -13,8 +13,8 @@ from browser_agent.tabs.models import TabRecord, TabSelector
 
 
 async def _await_if_needed(value: Any) -> Any:
-    """Await an Agent result when async; otherwise return the synchronous result."""
-    if isinstance(value, Awaitable):
+    """Await a result when it is awaitable; otherwise return it unchanged."""
+    if inspect.isawaitable(value):
         return await value
     return value
 
@@ -39,8 +39,7 @@ async def run_on_tab(
         llm=ChatGoogle(model=model),
         browser_session=session,
     )
-    result = cast(Any, agent.run())
-    history = await _await_if_needed(result)
+    history = await _await_if_needed(cast(Any, agent.run()))
 
     # Agent.run() can reset the session, so reconnect to the persistent Harness browser
     # and verify that the original target still exists after execution.
