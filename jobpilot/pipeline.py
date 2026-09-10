@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .generator import generate_cover_letter, generate_resume
+from .matching import match_keywords
 from .models import Job, JobApplicationDraft, ResumeProfile
 from .providers import create_llm
 
@@ -21,13 +22,16 @@ class JobPilot:
         profile: ResumeProfile,
         current_resume: str,
     ) -> JobApplicationDraft:
-        """Generate the resume and cover letter; do not submit an application."""
+        """Generate tailored material and deterministic autofill data; do not submit."""
+        matched, missing = match_keywords(job, profile)
         resume = await generate_resume(self.llm, job, profile, current_resume)
         cover_letter = await generate_cover_letter(self.llm, job, profile, resume)
         return JobApplicationDraft(
             job=job,
             resume_markdown=resume,
             cover_letter=cover_letter,
+            matched_keywords=matched,
+            missing_requirements=missing,
             autofill_fields=self._autofill_fields(profile),
             ready_for_review=True,
         )
