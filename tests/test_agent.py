@@ -113,7 +113,13 @@ async def test_run_on_tab_can_disable_regional_guidance(monkeypatch: Any) -> Non
     monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
     monkeypatch.setattr("browser_agent.agents.agent.connect_browser_harness", lambda: verification_session)
 
-    await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=session, india_runtime=None)
+    await run_on_tab(
+        "Read",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        india_runtime=None,
+        interaction_policy=None,
+    )
     assert captured["task"] == "Read"
 
 
