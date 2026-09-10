@@ -25,7 +25,19 @@ class TabManager:
     def __init__(self, browser_session: Any) -> None:
         self.browser_session = browser_session
 
+    async def _ensure_started(self) -> None:
+        """Initialize an unattached BrowserSession before reading its target cache."""
+        start = getattr(self.browser_session, "start", None)
+        if not callable(start):
+            return
+
+        # BrowserSession initializes its CDP root during start(). A fresh session
+        # otherwise has no cached targets, which makes get_tabs() return [].
+        if getattr(self.browser_session, "_cdp_client_root", None) is None:
+            await start()
+
     async def list_tabs(self) -> list[TabRecord]:
+        await self._ensure_started()
         tabs = await self.browser_session.get_tabs()
         return [
             TabRecord(
