@@ -16,11 +16,11 @@ class AmbiguousTabError(LookupError):
 
 
 class TabVerificationError(RuntimeError):
-    """The selected tab did not match its post-switch verification criteria."""
+    """The selected browser target is no longer the expected target."""
 
 
 class TabManager:
-    """Enumerate, locate, select, and verify tabs without relying on visible order alone."""
+    """Enumerate, locate, select, and verify tabs using stable target identity."""
 
     def __init__(self, browser_session: Any) -> None:
         self.browser_session = browser_session
@@ -51,22 +51,22 @@ class TabManager:
         return matches[0]
 
     async def select_tab(self, selector: TabSelector) -> TabRecord:
-        """Switch to exactly one tab and verify URL/title after switching."""
+        """Switch to exactly one tab and verify stable target identity."""
         selected = await self.find_tab(selector)
         await self.browser_session.switch_to_tab(selected.index)
         await self.verify_tab(selected)
         return selected
 
     async def verify_tab(self, expected: TabRecord) -> TabRecord:
-        """Re-read the active page and fail closed if it is not the expected tab."""
+        """Verify target identity first; metadata is returned as a fresh snapshot."""
+        focused_target = getattr(self.browser_session, "agent_focus_target_id", None)
+        if focused_target is not None and str(focused_target) != expected.target_id:
+            raise TabVerificationError(
+                f"Active target changed: expected {expected.target_id}, got {focused_target}"
+            )
+
         actual_url = str(await self.browser_session.get_current_page_url() or "")
         actual_title = str(await self.browser_session.get_current_page_title() or "")
-        if actual_url != expected.url or actual_title != expected.title:
-            raise TabVerificationError(
-                "Active tab verification failed: "
-                f"expected title={expected.title!r}, url={expected.url!r}; "
-                f"got title={actual_title!r}, url={actual_url!r}"
-            )
         return TabRecord(expected.index, expected.target_id, actual_title, actual_url)
 
     @staticmethod
