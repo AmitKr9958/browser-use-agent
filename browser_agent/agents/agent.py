@@ -8,7 +8,7 @@ from typing import Any, cast
 from browser_use import Agent, ChatGoogle
 
 from browser_agent.connection.harness import connect_browser_harness
-from browser_agent.models.india import IndiaRuntimeConfig
+from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
 from browser_agent.tabs.models import TabRecord, TabSelector
 
@@ -17,6 +17,7 @@ async def _await_if_needed(value: Any) -> Any:
     """Await a result when it is awaitable; otherwise return it unchanged."""
     if inspect.isawaitable(value):
         return await value
+
     return value
 
 
@@ -36,13 +37,12 @@ async def run_on_tab(
     max_steps: int = 100,
     llm_timeout: int | None = None,
     step_timeout: int | None = None,
-    india_runtime: IndiaRuntimeConfig | None = None,
+    india_runtime: IndiaRuntimeConfig | None = DEFAULT_INDIA_RUNTIME,
 ) -> Any:
-    """Select a target deterministically, run the agent, then verify the target still exists.
+    """Select one tab, run the agent, verify the target, and clean up owned sessions.
 
-    The default runtime applies Indian regional conventions without changing the
-    user's existing Chrome profile. Pass ``india_runtime=None`` to disable that
-    task guidance explicitly.
+    Indian regional conventions are included by default. Pass ``india_runtime=None``
+    when a task must use no regional guidance.
     """
     if not task.strip():
         raise ValueError("task must not be empty")
