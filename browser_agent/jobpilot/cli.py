@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--url", default="")
     prepare.add_argument("--resume", required=True)
     prepare.add_argument("--profile", default="", help="Optional JSON contact profile")
-    prepare.add_argument("--model", default="gemini-3-flash-preview")
+    prepare.add_argument("--model", default="gemini-3.6-flash")
     prepare.add_argument("--output-dir", default="", help="Optional directory for tailored resume and cover letter drafts")
     prepare.add_argument("--no-llm", action="store_true", help="Use deterministic drafts without a Gemini call")
 
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--url", required=True)
     apply.add_argument("--resume", required=True)
     apply.add_argument("--profile", default="", help="Optional JSON contact profile")
-    apply.add_argument("--model", default="gemini-3-flash-preview")
+    apply.add_argument("--model", default="gemini-3.6-flash")
     apply.add_argument("--max-steps", type=int, default=80)
     return parser
 
@@ -49,7 +49,7 @@ def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, Contact
 
 async def _run(args: argparse.Namespace) -> int:
     job, resume_text, profile = _load_inputs(args)
-    pilot = JobPilot(model=getattr(args, "model", "gemini-3-flash-preview"), max_steps=getattr(args, "max_steps", 80))
+    pilot = JobPilot(model=getattr(args, "model", "gemini-3.6-flash"), max_steps=getattr(args, "max_steps", 80))
     if args.command == "prepare":
         plan = await pilot.prepare_plan_async(job, resume_text, profile, use_llm=not args.no_llm)
         artifact_paths: dict[str, str] = {}
