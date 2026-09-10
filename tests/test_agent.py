@@ -53,7 +53,8 @@ async def test_run_on_tab_verifies_before_and_after(monkeypatch: Any) -> None:
         def __init__(self, **kwargs: Any) -> None:
             captured.update(kwargs)
 
-        async def run(self) -> FakeHistory:
+        async def run(self, **kwargs: Any) -> FakeHistory:
+            captured["run_kwargs"] = kwargs
             return FakeHistory()
 
     monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
@@ -64,6 +65,38 @@ async def test_run_on_tab_verifies_before_and_after(monkeypatch: Any) -> None:
     assert history.final_result() == "ok"
     assert captured["browser_session"] is session
     assert captured["task"] == "Read the page title"
+    assert captured["run_kwargs"] == {"max_steps": 100}
+
+
+@pytest.mark.asyncio
+async def test_run_on_tab_passes_execution_limits(monkeypatch: Any) -> None:
+    session = FakeSession()
+    verification_session = FakeSession()
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def run(self, **kwargs: Any) -> FakeHistory:
+            captured["run_kwargs"] = kwargs
+            return FakeHistory()
+
+    monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
+    monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
+    monkeypatch.setattr("browser_agent.agents.agent.connect_browser_harness", lambda: verification_session)
+
+    await run_on_tab(
+        "Read the page title",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        max_steps=2,
+        llm_timeout=30,
+        step_timeout=45,
+    )
+    assert captured["llm_timeout"] == 30
+    assert captured["step_timeout"] == 45
+    assert captured["run_kwargs"] == {"max_steps": 2}
 
 
 @pytest.mark.asyncio
@@ -75,7 +108,7 @@ async def test_run_on_tab_accepts_sync_agent_run(monkeypatch: Any) -> None:
         def __init__(self, **kwargs: Any) -> None:
             pass
 
-        def run(self) -> FakeHistory:
+        def run(self, **kwargs: Any) -> FakeHistory:
             return FakeHistory()
 
     monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
@@ -94,6 +127,16 @@ async def test_run_on_tab_rejects_empty_task() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_on_tab_rejects_invalid_limits() -> None:
+    with pytest.raises(ValueError, match="max_steps must be at least 1"):
+        await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=FakeSession(), max_steps=0)
+    with pytest.raises(ValueError, match="llm_timeout must be at least 1 second"):
+        await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=FakeSession(), llm_timeout=0)
+    with pytest.raises(ValueError, match="step_timeout must be at least 1 second"):
+        await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=FakeSession(), step_timeout=0)
+
+
+@pytest.mark.asyncio
 async def test_run_on_tab_fails_if_target_disappears(monkeypatch: Any) -> None:
     session = FakeSession()
     verification_session = FakeSession([FakeTab("different-target")])
@@ -102,7 +145,7 @@ async def test_run_on_tab_fails_if_target_disappears(monkeypatch: Any) -> None:
         def __init__(self, **kwargs: Any) -> None:
             pass
 
-        async def run(self) -> FakeHistory:
+        async def run(self, **kwargs: Any) -> FakeHistory:
             return FakeHistory()
 
     monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
