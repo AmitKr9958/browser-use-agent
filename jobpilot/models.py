@@ -47,3 +47,17 @@ class JobApplicationDraft(BaseModel):
     missing_requirements: list[str] = Field(default_factory=list)
     autofill_fields: dict[str, str] = Field(default_factory=dict)
     ready_for_review: bool = False
+
+
+class ApplicationReview(BaseModel):
+    """Auditable result of preparing and safely autofilling an application."""
+
+    draft: JobApplicationDraft
+    ats: str
+    filled_fields: list[dict[str, str | int]] = Field(default_factory=list)
+    skipped_fields: list[dict[str, str | int]] = Field(default_factory=list)
+    unknown_fields: list[dict[str, str | int]] = Field(default_factory=list)
+    resume_path: str | None = None
+    cover_letter_path: str | None = None
+    ready_for_review: bool = True
+    submitted: bool = False
