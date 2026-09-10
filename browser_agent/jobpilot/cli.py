@@ -7,7 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from .models import JobDescription
+from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot
 
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, object]:
+def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, ContactProfile]:
     description = Path(args.description).expanduser().read_text(encoding="utf-8").strip()
     resume_text = extract_resume_text(args.resume)
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
