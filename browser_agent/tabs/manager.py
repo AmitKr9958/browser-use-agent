@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+import inspect
+from typing import Any, cast
 
 from .models import TabRecord, TabSelector
 
@@ -17,6 +18,13 @@ class AmbiguousTabError(LookupError):
 
 class TabVerificationError(RuntimeError):
     """The selected browser target is no longer the expected target."""
+
+
+async def _await_if_needed(value: Any) -> Any:
+    """Await a result when it is awaitable; otherwise return it unchanged."""
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 class TabManager:
@@ -34,7 +42,7 @@ class TabManager:
         # BrowserSession initializes its CDP root during start(). A fresh session
         # otherwise has no cached targets, which makes get_tabs() return [].
         if getattr(self.browser_session, "_cdp_client_root", None) is None:
-            await start()
+            await _await_if_needed(cast(Any, start)())
 
     async def list_tabs(self) -> list[TabRecord]:
         await self._ensure_started()
