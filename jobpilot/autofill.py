@@ -1,14 +1,11 @@
-"""Fast, conservative application-form field mapping.
-
-This module intentionally handles only fields whose values are explicitly present in
-ResumeProfile. Unknown or sensitive questions are left for the AI/manual review layer.
-"""
+"""Fast, conservative application-form field mapping."""
 
 from __future__ import annotations
 
 import re
 from typing import Iterable
 
+from .field_policy import is_safe_autofill_label
 from .models import ResumeProfile
 
 _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -26,11 +23,8 @@ def _normalize(value: str) -> str:
 
 
 def build_field_values(profile: ResumeProfile) -> dict[str, str]:
-    """Build the small set of deterministic values safe to fill automatically."""
-    values = {
-        "name": profile.name,
-        "email": profile.email,
-    }
+    """Build deterministic values backed only by explicit candidate data."""
+    values = {"name": profile.name, "email": profile.email}
     if profile.phone:
         values["phone"] = profile.phone
     if profile.location:
@@ -51,10 +45,12 @@ def classify_field(*labels: str) -> str | None:
 
 
 def map_form_fields(labels: Iterable[str], profile: ResumeProfile) -> dict[str, str]:
-    """Map field labels to values; duplicate/unknown labels are skipped."""
+    """Map safe, uniquely understood labels to profile values."""
     values = build_field_values(profile)
     result: dict[str, str] = {}
     for label in labels:
+        if not is_safe_autofill_label(label):
+            continue
         field = classify_field(label)
         if field and field in values:
             result[label] = values[field]
