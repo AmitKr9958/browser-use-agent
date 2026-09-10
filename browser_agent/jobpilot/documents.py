@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from browser_use import ChatGoogle
 from browser_use.llm.messages import UserMessage
+from docx import Document
 
 from .models import ContactProfile, JobDescription
 
@@ -28,7 +31,7 @@ async def tailor_resume_with_llm(
     resume_text: str,
     job_description: str,
     *,
-    model: str = "gemini-3-flash-preview",
+    model: str = "gemini-3.6-flash",
 ) -> str:
     """Generate an ATS-focused resume draft while explicitly prohibiting invented facts.
 
@@ -62,6 +65,31 @@ SOURCE RESUME:
     return output
 
 
+def write_resume_docx(resume_text: str, output_path: str | Path) -> Path:
+    """Write a clean, ATS-friendly DOCX draft without tables or graphics."""
+    if not resume_text.strip():
+        raise ValueError("resume_text must not be empty")
+    path = Path(output_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = Document()
+    for raw_line in resume_text.strip().splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("### "):
+            document.add_heading(line[4:].strip(), level=2)
+        elif line.startswith("## "):
+            document.add_heading(line[3:].strip(), level=1)
+        elif line.startswith("# "):
+            document.add_heading(line[2:].strip(), level=1)
+        elif line.startswith("- ") or line.startswith("* "):
+            document.add_paragraph(line[2:].strip(), style="List Bullet")
+        else:
+            document.add_paragraph(line)
+    document.save(path)
+    return path
+
+
 def build_cover_letter(job: JobDescription, profile: ContactProfile, *, resume_text: str = "") -> str:
     """Build a concise cover letter from supplied facts only."""
     name = profile.name or "Applicant"
@@ -84,7 +112,7 @@ async def build_cover_letter_with_llm(
     profile: ContactProfile,
     resume_text: str,
     *,
-    model: str = "gemini-3-flash-preview",
+    model: str = "gemini-3.6-flash",
 ) -> str:
     """Generate a targeted cover-letter draft using only supplied resume/profile facts."""
     if not resume_text.strip():
