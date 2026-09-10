@@ -1,4 +1,4 @@
-"""Production-oriented CLI for Browser Harness tab control and agent execution."""
+"""Production CLI for AI agent tasks and deterministic one-off browser actions."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from browser_agent.actions.basic import click_selector, open_url, screenshot
 from browser_agent.agents.agent import run_on_tab
 from browser_agent.connection.harness import connect_browser_harness
 from browser_agent.tabs.manager import TabManager
@@ -27,7 +28,7 @@ def _add_selector_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Deterministic Browser Harness automation")
+    parser = argparse.ArgumentParser(description="Browser Use AI automation and deterministic browser actions")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("list", help="List all open browser tabs")
@@ -35,13 +36,22 @@ def build_parser() -> argparse.ArgumentParser:
     select = sub.add_parser("select", help="Select and verify exactly one tab")
     _add_selector_arguments(select)
 
-    run = sub.add_parser("run", help="Run a Browser Use task on exactly one selected tab")
-    run.add_argument("--task", required=True, help="Task for the Browser Use agent")
+    run = sub.add_parser("run", help="Run an AI Browser Use task on exactly one selected tab")
+    run.add_argument("--task", required=True, help="High-level task for the Browser Use agent")
     _add_selector_arguments(run)
     run.add_argument("--model", default="gemini-3.6-flash")
     run.add_argument("--max-steps", type=int, default=100)
     run.add_argument("--llm-timeout", type=int, default=None)
     run.add_argument("--step-timeout", type=int, default=None)
+
+    open_command = sub.add_parser("open", help="Open a URL in a new browser tab")
+    open_command.add_argument("url", help="URL to open")
+
+    click_command = sub.add_parser("click", help="Click exactly one element on the current page")
+    click_command.add_argument("--selector", required=True, help="CSS selector that must match exactly one element")
+
+    screenshot_command = sub.add_parser("screenshot", help="Save a PNG screenshot of the current page")
+    screenshot_command.add_argument("output", help="Output PNG path")
     return parser
 
 
@@ -77,11 +87,22 @@ async def main_async(args: argparse.Namespace) -> int:
             llm_timeout=args.llm_timeout,
             step_timeout=args.step_timeout,
         )
-        result = _history_result(history)
-        print(json.dumps({"success": True, "result": result}, indent=2))
+        print(json.dumps({"success": True, "result": _history_result(history)}, indent=2))
         return 0
 
-    manager = TabManager(connect_browser_harness())
+    session = connect_browser_harness()
+    if args.command == "open":
+        print(json.dumps({"success": True, **await open_url(args.url, session)}, indent=2))
+        return 0
+    if args.command == "click":
+        print(json.dumps({"success": True, **await click_selector(args.selector, browser_session=session)}, indent=2))
+        return 0
+    if args.command == "screenshot":
+        path = await screenshot(args.output, browser_session=session)
+        print(json.dumps({"success": True, "path": str(path)}, indent=2))
+        return 0
+
+    manager = TabManager(session)
     if args.command == "list":
         print(json.dumps([asdict(tab) for tab in await manager.list_tabs()], indent=2))
         return 0
