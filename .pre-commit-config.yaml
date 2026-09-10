@@ -20,23 +20,21 @@ repos:
       - id: pyupgrade
         args: [--py311-plus]
 
-  # - repo: https://github.com/asottile/add-trailing-comma
-  #   rev: v3.1.0
-  #   hooks:
-  #     - id: add-trailing-comma
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.10
     hooks:
       - id: ruff-check
         args: [ --fix ]
+        files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
       - id: ruff-format
+        files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$|test_browser_use\.py$)
       # see pyproject.toml for more details on ruff config
 
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.404
     hooks:
     - id: pyright
+      files: ^(browser_agent/|tests/test_(tabs|connection|agent|cli)\.py$|examples/list_and_select_tabs\.py$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
