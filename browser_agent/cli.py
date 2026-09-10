@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from dataclasses import asdict
 
 from dotenv import load_dotenv
 
@@ -45,11 +46,11 @@ async def main_async(args: argparse.Namespace) -> int:
     load_dotenv()
     manager = TabManager(connect_browser_harness())
     if args.command == "list":
-        print(json.dumps([tab.__dict__ for tab in await manager.list_tabs()], indent=2))
+        print(json.dumps([asdict(tab) for tab in await manager.list_tabs()], indent=2))
         return 0
 
     selected = await manager.select_tab(selector_from_args(args))
-    print(json.dumps(selected.__dict__, indent=2))
+    print(json.dumps(asdict(selected), indent=2))
     return 0
 
 
