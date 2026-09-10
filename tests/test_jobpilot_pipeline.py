@@ -1,6 +1,6 @@
 """Tests for the end-to-end JobPilot preparation flow."""
 
-from types import SimpleNamespace
+import json
 
 import pytest
 
@@ -32,13 +32,43 @@ class _Page:
 
     async def evaluate(self, script: str, arg: object = None) -> str | bool:
         if "JSON.stringify" in script:
-            import json
-
-            return json.dumps([
-                {"index": 0, "tag": "input", "type": "text", "name": "full_name", "id": "", "placeholder": "", "autocomplete": "", "aria": "", "value": ""},
-                {"index": 1, "tag": "input", "type": "email", "name": "email", "id": "", "placeholder": "", "autocomplete": "", "aria": "", "value": ""},
-                {"index": 2, "tag": "input", "type": "password", "name": "password", "id": "", "placeholder": "", "autocomplete": "", "aria": "", "value": ""},
-            ])
+            return json.dumps(
+                [
+                    {
+                        "index": 0,
+                        "tag": "input",
+                        "type": "text",
+                        "name": "full_name",
+                        "id": "",
+                        "placeholder": "",
+                        "autocomplete": "",
+                        "aria": "",
+                        "value": "",
+                    },
+                    {
+                        "index": 1,
+                        "tag": "input",
+                        "type": "email",
+                        "name": "email",
+                        "id": "",
+                        "placeholder": "",
+                        "autocomplete": "",
+                        "aria": "",
+                        "value": "",
+                    },
+                    {
+                        "index": 2,
+                        "tag": "input",
+                        "type": "password",
+                        "name": "password",
+                        "id": "",
+                        "placeholder": "",
+                        "autocomplete": "",
+                        "aria": "",
+                        "value": "",
+                    },
+                ]
+            )
         assert isinstance(arg, dict)
         self.values[int(arg["index"])] = str(arg["value"])
         return True
@@ -49,8 +79,17 @@ async def test_prepare_and_autofill_stops_before_submission(tmp_path) -> None:
     llm = _LLM()
     pilot = JobPilot(llm=llm)
     page = _Page()
-    profile = ResumeProfile(name="Amit Kumar", email="amit@example.com", phone="+91 9000000000")
-    job = Job(title="Python Engineer", company="Example", url=page.url, description="Python SQL")
+    profile = ResumeProfile(
+        name="Amit Kumar",
+        email="amit@example.com",
+        phone="+91 9000000000",
+    )
+    job = Job(
+        title="Python Engineer",
+        company="Example",
+        url=page.url,
+        description="Python SQL",
+    )
 
     result = await pilot.prepare_and_autofill(
         job,
