@@ -57,4 +57,4 @@ async def test_prepare_application_is_review_ready(profile: ResumeProfile) -> No
     assert draft.cover_letter == "GENERATED OUTPUT"
     assert draft.autofill_fields["email"] == "amit@example.com"
     assert len(llm.prompts) == 2
-    assert "Never invent" in llm.prompts[0]
+    assert "never invent" in llm.prompts[0].casefold()
