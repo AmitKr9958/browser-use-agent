@@ -13,7 +13,12 @@ from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY
 from browser_agent.tabs.models import TabSelector
 
 from .ats import score_job_match
-from .documents import build_cover_letter, tailor_resume_text
+from .documents import (
+    build_cover_letter,
+    build_cover_letter_with_llm,
+    tailor_resume_text,
+    tailor_resume_with_llm,
+)
 from .models import ApplicationPlan, ContactProfile, JobDescription
 
 
@@ -70,7 +75,7 @@ SAFETY
 class JobPilot:
     """High-level JobPilot workflow using the existing Browser Use/Harness stack."""
 
-    def __init__(self, *, model: str = "gemini-3.6-flash", max_steps: int = 80) -> None:
+    def __init__(self, *, model: str = "gemini-3-flash-preview", max_steps: int = 80) -> None:
         if not model.strip():
             raise ValueError("model must not be empty")
         if max_steps < 1:
@@ -86,10 +91,45 @@ class JobPilot:
         *,
         answers: dict[str, str] | None = None,
     ) -> ApplicationPlan:
-        """Prepare ATS score and truthful document variants before browser actions."""
+        """Prepare deterministic ATS score and safe document variants."""
         match = score_job_match(job.description, resume_text)
         tailored = tailor_resume_text(resume_text, match.missing_keywords)
         cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
+        plan = ApplicationPlan(
+            job=job,
+            profile=profile,
+            match=match,
+            tailored_resume_text=tailored,
+            cover_letter=cover_letter,
+            answers=dict(answers or {}),
+            auto_submit=False,
+        )
+        plan.validate()
+        return plan
+
+    async def prepare_plan_async(
+        self,
+        job: JobDescription,
+        resume_text: str,
+        profile: ContactProfile,
+        *,
+        answers: dict[str, str] | None = None,
+        use_llm: bool = True,
+    ) -> ApplicationPlan:
+        """Prepare an ATS score plus Gemini drafts, falling back safely when unavailable."""
+        match = score_job_match(job.description, resume_text)
+        tailored = tailor_resume_text(resume_text, match.missing_keywords)
+        cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
+        if use_llm:
+            try:
+                tailored = await tailor_resume_with_llm(resume_text, job.description, model=self.model)
+            except Exception:
+                # Document generation is optional; browser autofill must remain usable without it.
+                tailored = tailor_resume_text(resume_text, match.missing_keywords)
+            try:
+                cover_letter = await build_cover_letter_with_llm(job, profile, resume_text, model=self.model)
+            except Exception:
+                cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
         plan = ApplicationPlan(
             job=job,
             profile=profile,
