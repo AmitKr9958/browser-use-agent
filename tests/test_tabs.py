@@ -37,6 +37,17 @@ class FakeSession:
         return self.tabs[self.active].title
 
 
+class StartableFakeSession(FakeSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self._cdp_client_root = None
+        self.started = False
+
+    async def start(self):
+        self.started = True
+        self._cdp_client_root = object()
+
+
 @pytest.mark.asyncio
 async def test_list_tabs_returns_stable_records():
     manager = TabManager(FakeSession())
@@ -46,6 +57,15 @@ async def test_list_tabs_returns_stable_records():
         (1, "target-github", "GitHub", "https://github.com/"),
         (2, "target-router", "9Router", "https://9router.com/"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_list_tabs_starts_uninitialized_session():
+    session = StartableFakeSession()
+    manager = TabManager(session)
+    tabs = await manager.list_tabs()
+    assert session.started is True
+    assert len(tabs) == 3
 
 
 @pytest.mark.asyncio
