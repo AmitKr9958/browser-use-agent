@@ -5,9 +5,10 @@ from __future__ import annotations
 import inspect
 from typing import Any, cast
 
-from browser_use import Agent, ChatGoogle
+from browser_use import Agent
 
 from browser_agent.connection.harness import connect_browser_harness
+from browser_agent.llm import create_llm
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
@@ -48,6 +49,8 @@ async def run_on_tab(
     selector: TabSelector,
     *,
     model: str = "gemini-3.6-flash",
+    provider: str = "google",
+    llm: Any | None = None,
     browser_session: Any | None = None,
     max_steps: int = 100,
     llm_timeout: int | None = None,
@@ -57,6 +60,8 @@ async def run_on_tab(
 ) -> Any:
     """Select one tab, run the agent, verify the target, and clean up owned sessions.
 
+    Pass a native Browser Use ``llm`` instance for full provider flexibility, or use
+    ``provider`` + ``model`` for built-in Google/Gemini, Anthropic/Claude, and OpenAI.
     Indian regional conventions and conservative sensitive-interaction boundaries are
     enabled by default. Pass either option as ``None`` to disable that guidance.
     """
@@ -68,6 +73,8 @@ async def run_on_tab(
         raise ValueError("llm_timeout must be at least 1 second")
     if step_timeout is not None and step_timeout < 1:
         raise ValueError("step_timeout must be at least 1 second")
+    if llm is not None and not callable(getattr(llm, "ainvoke", None)):
+        raise TypeError("llm must provide an ainvoke(messages) method")
 
     owns_session = browser_session is None
     session = browser_session or connect_browser_harness()
@@ -77,7 +84,7 @@ async def run_on_tab(
 
     agent_kwargs: dict[str, Any] = {
         "task": effective_task,
-        "llm": ChatGoogle(model=model),
+        "llm": llm if llm is not None else create_llm(provider, model),
         "browser_session": session,
     }
     if llm_timeout is not None:
@@ -89,8 +96,6 @@ async def run_on_tab(
         agent = Agent(**agent_kwargs)
         history = await _await_if_needed(cast(Any, agent.run(max_steps=max_steps)))
 
-        # Agent.run() can reset the session, so reconnect to the persistent Harness browser
-        # and verify that the original target still exists after execution.
         verification_session = connect_browser_harness()
         try:
             verification_manager = TabManager(verification_session)
@@ -104,7 +109,5 @@ async def run_on_tab(
 
         return history
     finally:
-        # Only stop sessions created by this function. A caller-provided session may
-        # be shared by a larger application and remains the caller's responsibility.
         if owns_session:
             await _best_effort_stop(session)

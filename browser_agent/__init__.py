@@ -1,6 +1,8 @@
 """Application layer for deterministic Browser Use + Browser Harness automation."""
 
+from .actions.basic import click_selector, open_url, screenshot
 from .agents import run_on_tab
+from .llm import create_llm
 from .models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from .models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
 from .tabs.errors import AmbiguousTabError, TabNotFoundError, TabVerificationError
@@ -18,5 +20,9 @@ __all__ = [
     "TabRecord",
     "TabSelector",
     "TabVerificationError",
+    "click_selector",
+    "create_llm",
+    "open_url",
     "run_on_tab",
+    "screenshot",
 ]
