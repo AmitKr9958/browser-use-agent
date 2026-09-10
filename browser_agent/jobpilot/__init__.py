@@ -6,6 +6,7 @@ from .documents import (
     build_cover_letter_with_llm,
     tailor_resume_text,
     tailor_resume_with_llm,
+    write_resume_docx,
 )
 from .models import ApplicationPlan, ContactProfile, JobDescription
 from .profile import extract_resume_text, load_contact_profile
@@ -24,4 +25,5 @@ __all__ = [
     "score_job_match",
     "tailor_resume_text",
     "tailor_resume_with_llm",
+    "write_resume_docx",
 ]
