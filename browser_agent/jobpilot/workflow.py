@@ -20,26 +20,38 @@ from .models import ApplicationPlan, ContactProfile, JobDescription
 def build_application_task(plan: ApplicationPlan, *, resume_path: str) -> str:
     """Build a conservative Browser Use task that fills but never submits."""
     plan.validate()
-    contact = plan.job
     answers = "\n".join(f"- {key}: {value}" for key, value in plan.answers.items()) or "- No extra answers supplied."
+    profile = plan.profile
+    supplied = {
+        "name": profile.name,
+        "email": profile.email,
+        "phone": profile.phone,
+        "location": profile.location,
+        "linkedin": profile.linkedin,
+        "portfolio": profile.portfolio,
+        "work_authorization": profile.work_authorization,
+        "sponsorship": profile.sponsorship,
+    }
+    contact_lines = "\n".join(f"- {key}: {value or '[NOT SUPPLIED — leave blank]'}" for key, value in supplied.items())
     return f"""
 You are JobPilot, a job-application assistant.
 
-Target role: {contact.title} at {contact.company}
-Application URL: {contact.url}
+Target role: {plan.job.title} at {plan.job.company}
+Application URL: {plan.job.url}
 Resume file: {resume_path}
 
 OBJECTIVE
-1. Inspect the currently open application page and identify all visible application fields.
+1. Inspect the currently open application page and identify all visible application fields, including fields inside supported frames.
 2. Fill only fields for which a value is explicitly supplied below or is directly supported by the resume.
-3. Upload the supplied resume when a resume/CV upload control exists.
+3. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
 4. If a question is ambiguous, sensitive, demographic, legal, sponsorship-related, salary-related, or requires a value not supplied, leave it unchanged and report it for manual review.
 5. Verify filled values after interaction where the page permits.
 6. STOP before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
 
-CONTACT DATA
-- Name: {plan.job.company and 'Use the supplied profile name in the runtime context; do not invent one.'}
-- Additional answers:
+SUPPLIED PROFILE
+{contact_lines}
+
+ADDITIONAL ANSWERS
 {answers}
 
 RESUME/ATS CONTEXT
@@ -50,6 +62,7 @@ SAFETY
 - Never invent personal information, employment history, education, dates, salary, authorization, sponsorship, identity numbers, passwords, OTPs, or demographic answers.
 - Never submit the application.
 - Stop at CAPTCHA, MFA/OTP, login, payment, or identity-verification steps and report the blocker.
+- If no form fields are exposed, report the page state and do not claim autofill succeeded.
 - Do not claim success unless the field interaction or upload is visibly verified.
 """.strip()
 
@@ -79,6 +92,7 @@ class JobPilot:
         cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
         plan = ApplicationPlan(
             job=job,
+            profile=profile,
             match=match,
             tailored_resume_text=tailored,
             cover_letter=cover_letter,
@@ -90,9 +104,8 @@ class JobPilot:
 
     async def apply_to_open_page(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Fill the already-open application page and stop before submission."""
-        task = build_application_task(plan, resume_path=resume_path)
         return await run_on_tab(
-            task,
+            build_application_task(plan, resume_path=resume_path),
             TabSelector(index=0),
             model=self.model,
             max_steps=self.max_steps,
