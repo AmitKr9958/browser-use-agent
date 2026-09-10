@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from browser_use import Agent, ChatGoogle
@@ -36,7 +37,8 @@ async def run_on_tab(
         llm=ChatGoogle(model=model),
         browser_session=session,
     )
-    history = await agent.run()
+    result = agent.run()
+    history = await result if inspect.isawaitable(result) else result
 
     # Agent.run() can reset the session, clearing agent_focus_target_id. Reconnect to
     # the persistent Harness browser and verify the original target still exists.
@@ -51,6 +53,8 @@ async def run_on_tab(
     finally:
         stop = getattr(verification_session, "stop", None)
         if callable(stop):
-            await stop()
+            cleanup_result = stop()
+            if inspect.isawaitable(cleanup_result):
+                await cleanup_result
 
     return history
