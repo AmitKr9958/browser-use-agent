@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from browser_agent.agents.agent import run_on_tab
+from browser_agent.models.india import IndiaRuntimeConfig
 from browser_agent.tabs.manager import TabNotFoundError
 from browser_agent.tabs.models import TabSelector
 
@@ -64,8 +65,56 @@ async def test_run_on_tab_verifies_before_and_after(monkeypatch: Any) -> None:
     history = await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
     assert history.final_result() == "ok"
     assert captured["browser_session"] is session
-    assert captured["task"] == "Read the page title"
+    assert "Read the page title" in captured["task"]
+    assert "locale=en-IN" in captured["task"]
     assert captured["run_kwargs"] == {"max_steps": 100}
+
+
+@pytest.mark.asyncio
+async def test_run_on_tab_supports_custom_india_runtime(monkeypatch: Any) -> None:
+    session = FakeSession()
+    verification_session = FakeSession()
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def run(self, **kwargs: Any) -> FakeHistory:
+            return FakeHistory()
+
+    monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
+    monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
+    monkeypatch.setattr("browser_agent.agents.agent.connect_browser_harness", lambda: verification_session)
+
+    await run_on_tab(
+        "Read",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        india_runtime=IndiaRuntimeConfig(locale="hi-IN", timezone="Asia/Kolkata", currency="INR", country_code="IN"),
+    )
+    assert "locale=hi-IN" in captured["task"]
+
+
+@pytest.mark.asyncio
+async def test_run_on_tab_can_disable_regional_guidance(monkeypatch: Any) -> None:
+    session = FakeSession()
+    verification_session = FakeSession()
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def run(self, **kwargs: Any) -> FakeHistory:
+            return FakeHistory()
+
+    monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
+    monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
+    monkeypatch.setattr("browser_agent.agents.agent.connect_browser_harness", lambda: verification_session)
+
+    await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=session, india_runtime=None)
+    assert captured["task"] == "Read"
 
 
 @pytest.mark.asyncio
