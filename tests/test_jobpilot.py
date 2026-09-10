@@ -1,10 +1,10 @@
 """Unit tests for the JobPilot MVP application layer."""
 
 from browser_agent.jobpilot.ats import score_job_match
-from browser_agent.jobpilot.documents import build_cover_letter, tailor_resume_text
+from browser_agent.jobpilot.documents import build_cover_letter, tailor_resume_text, write_resume_docx
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
 from browser_agent.jobpilot.profile import infer_contact_profile
-from browser_agent.jobpilot.workflow import build_application_task
+from browser_agent.jobpilot.workflow import JobPilot, build_application_task
 
 
 def test_ats_score_is_explainable() -> None:
@@ -60,3 +60,14 @@ def test_browser_task_contains_submission_guard() -> None:
     assert "Never submit the application" in task
     assert "resume.pdf" in task
     assert "amit@example.com" in task
+    assert "safe Next" in task
+
+
+def test_resume_docx_writer_creates_artifact(tmp_path) -> None:
+    output = write_resume_docx("Amit Kumar\n\n## Skills\n- Python\n- Excel", tmp_path / "resume.docx")
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+
+def test_default_browser_model_is_preserved() -> None:
+    assert JobPilot().model == "gemini-3.6-flash"
