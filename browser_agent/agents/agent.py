@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-import inspect
-from typing import Any
+from typing import Any, Awaitable, cast
 
 from browser_use import Agent, ChatGoogle
 
 from browser_agent.connection.harness import connect_browser_harness
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
 from browser_agent.tabs.models import TabRecord, TabSelector
+
+
+async def _await_if_needed(value: Any) -> Any:
+    """Await an Agent result when async; otherwise return the synchronous result."""
+    if isinstance(value, Awaitable):
+        return await value
+    return value
 
 
 async def run_on_tab(
@@ -19,12 +25,7 @@ async def run_on_tab(
     model: str = "gemini-3.6-flash",
     browser_session: Any | None = None,
 ) -> Any:
-    """Select a target deterministically, run the agent, then verify the target still exists.
-
-    Browser Use may reset/stop its BrowserSession when an Agent run completes. Therefore
-    post-run verification intentionally creates a fresh Harness session when the caller
-    supplied no session, rather than assuming the original session remains focused.
-    """
+    """Select a target deterministically, run the agent, then verify the target still exists."""
     if not task.strip():
         raise ValueError("task must not be empty")
 
@@ -37,11 +38,11 @@ async def run_on_tab(
         llm=ChatGoogle(model=model),
         browser_session=session,
     )
-    result = agent.run()
-    history = await result if inspect.isawaitable(result) else result
+    result = cast(Any, agent.run())
+    history = await _await_if_needed(result)
 
-    # Agent.run() can reset the session, clearing agent_focus_target_id. Reconnect to
-    # the persistent Harness browser and verify the original target still exists.
+    # Agent.run() can reset the session, so reconnect to the persistent Harness browser
+    # and verify that the original target still exists after execution.
     verification_session = connect_browser_harness()
     verification_manager = TabManager(verification_session)
     try:
@@ -53,8 +54,6 @@ async def run_on_tab(
     finally:
         stop = getattr(verification_session, "stop", None)
         if callable(stop):
-            cleanup_result = stop()
-            if inspect.isawaitable(cleanup_result):
-                await cleanup_result
+            await _await_if_needed(cast(Any, stop()))
 
     return history
