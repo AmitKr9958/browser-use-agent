@@ -25,21 +25,40 @@ async def run_on_tab(
     *,
     model: str = 'gemini-3.6-flash',
     browser_session: Any | None = None,
+    max_steps: int = 100,
+    llm_timeout: int | None = None,
+    step_timeout: int | None = None,
 ) -> Any:
-    """Select a target deterministically, run the agent, then verify the target still exists."""
+    """Select a target deterministically, run the agent, then verify the target still exists.
+
+    ``max_steps`` and timeout overrides make live runs bounded and testable without
+    changing the normal Browser Use defaults when no overrides are supplied.
+    """
     if not task.strip():
         raise ValueError('task must not be empty')
+    if max_steps < 1:
+        raise ValueError('max_steps must be at least 1')
+    if llm_timeout is not None and llm_timeout < 1:
+        raise ValueError('llm_timeout must be at least 1 second')
+    if step_timeout is not None and step_timeout < 1:
+        raise ValueError('step_timeout must be at least 1 second')
 
     session = browser_session or connect_browser_harness()
     manager = TabManager(session)
     selected: TabRecord = await manager.select_tab(selector)
 
-    agent = Agent(
-        task=task,
-        llm=ChatGoogle(model=model),
-        browser_session=session,
-    )
-    history = await _await_if_needed(cast(Any, agent.run()))
+    agent_kwargs: dict[str, Any] = {
+        'task': task,
+        'llm': ChatGoogle(model=model),
+        'browser_session': session,
+    }
+    if llm_timeout is not None:
+        agent_kwargs['llm_timeout'] = llm_timeout
+    if step_timeout is not None:
+        agent_kwargs['step_timeout'] = step_timeout
+
+    agent = Agent(**agent_kwargs)
+    history = await _await_if_needed(cast(Any, agent.run(max_steps=max_steps)))
 
     # Agent.run() can reset the session, so reconnect to the persistent Harness browser
     # and verify that the original target still exists after execution.
