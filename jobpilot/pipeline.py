@@ -13,6 +13,7 @@ from .matching import match_keywords
 from .models import ApplicationReview, Job, JobApplicationDraft, ResumeProfile
 from .providers import create_llm
 from .resume_io import write_ats_docx
+from .resume_quality import validate_ats_resume
 
 
 class JobPilot:
@@ -30,6 +31,9 @@ class JobPilot:
         """Generate tailored material and deterministic autofill data; do not submit."""
         matched, missing = match_keywords(job, profile)
         resume = await generate_resume(self.llm, job, profile, current_resume)
+        quality = validate_ats_resume(resume, profile)
+        if not quality.valid:
+            raise RuntimeError("Generated resume failed ATS quality checks: " + "; ".join(quality.errors))
         cover_letter = await generate_cover_letter(self.llm, job, profile, resume)
         return JobApplicationDraft(
             job=job,
@@ -51,11 +55,7 @@ class JobPilot:
         resume_path: str | Path | None = None,
         cover_letter_path: str | Path | None = None,
     ) -> ApplicationReview:
-        """Prepare materials, fill safe empty fields, and stop before submission.
-
-        The browser page is supplied by the caller so Browser Use can keep control
-        of the user's existing session. Unknown and sensitive fields are left alone.
-        """
+        """Prepare materials, fill safe empty fields, and stop before submission."""
         draft = await self.prepare_application(job, profile, current_resume)
         fields = await inspect_form(page)
         plan = plan_autofill(fields, profile)
