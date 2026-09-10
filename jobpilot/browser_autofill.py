@@ -6,8 +6,8 @@ import json
 from typing import Any
 
 from .autofill import build_field_values, classify_field
+from .field_policy import is_safe_autofill_label
 from .models import ResumeProfile
-
 
 _FORM_SCRIPT = """
 () => JSON.stringify(Array.from(document.querySelectorAll('input, textarea, select')).map((el, index) => ({
@@ -48,13 +48,7 @@ async def inspect_form(page: Any) -> list[dict[str, str | int]]:
 
 
 def _field_labels(field: dict[str, str | int]) -> list[str]:
-    return [
-        str(field.get("name", "")),
-        str(field.get("id", "")),
-        str(field.get("placeholder", "")),
-        str(field.get("autocomplete", "")),
-        str(field.get("aria", "")),
-    ]
+    return [str(field.get(key, "")) for key in ("name", "id", "placeholder", "autocomplete", "aria")]
 
 
 def plan_autofill(fields: list[dict[str, str | int]], profile: ResumeProfile) -> list[tuple[int, str, str]]:
@@ -62,9 +56,11 @@ def plan_autofill(fields: list[dict[str, str | int]], profile: ResumeProfile) ->
     values = build_field_values(profile)
     plan: list[tuple[int, str, str]] = []
     for field in fields:
-        if str(field.get("type", "")).casefold() in {"hidden", "file", "password", "submit", "button"}:
+        field_type = str(field.get("type", "")).casefold()
+        labels = _field_labels(field)
+        if field_type in {"hidden", "file", "password", "submit", "button"} or not any(is_safe_autofill_label(label) for label in labels):
             continue
-        key = classify_field(*_field_labels(field))
+        key = classify_field(*labels)
         if key and key in values and not str(field.get("value", "")).strip():
             plan.append((int(field["index"]), key, values[key]))
     return plan
