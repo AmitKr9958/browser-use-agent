@@ -34,9 +34,9 @@ jobs:
       - name: Install project
         run: uv sync --dev
       - name: Run application unit tests
-        run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_jobpilot_core.py -q
+        run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_jobpilot_core.py tests/test_jobpilot_autofill.py -q
       - name: Lint application layer and examples
-        run: uv run ruff check browser_agent jobpilot tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_jobpilot_core.py examples/live_harness_agent_smoke.py examples/jobpilot_prepare_application.py
+        run: uv run ruff check browser_agent jobpilot tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_jobpilot_core.py tests/test_jobpilot_autofill.py examples/live_harness_agent_smoke.py examples/jobpilot_prepare_application.py
       - name: Type-check application layer
         run: uv run pyright browser_agent jobpilot
       - name: Build distribution
