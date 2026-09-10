@@ -49,7 +49,7 @@ OBJECTIVE
 1. Inspect the currently open application page and identify all visible application fields, including fields inside supported frames.
 2. Fill only fields for which a value is explicitly supplied below or is directly supported by the resume.
 3. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
-4. If a question is ambiguous, sensitive, demographic, legal, sponsorship-related, salary-related, or requires a value not supplied, leave it unchanged and report it for manual review.
+4. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
 5. Verify filled values after interaction where the page permits.
 6. STOP before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
 
@@ -75,7 +75,7 @@ SAFETY
 class JobPilot:
     """High-level JobPilot workflow using the existing Browser Use/Harness stack."""
 
-    def __init__(self, *, model: str = "gemini-3-flash-preview", max_steps: int = 80) -> None:
+    def __init__(self, *, model: str = "gemini-3.6-flash", max_steps: int = 80) -> None:
         if not model.strip():
             raise ValueError("model must not be empty")
         if max_steps < 1:
@@ -116,7 +116,7 @@ class JobPilot:
         answers: dict[str, str] | None = None,
         use_llm: bool = True,
     ) -> ApplicationPlan:
-        """Prepare an ATS score plus Gemini drafts, falling back safely when unavailable."""
+        """Prepare an ATS score plus LLM drafts, falling back safely when unavailable."""
         match = score_job_match(job.description, resume_text)
         tailored = tailor_resume_text(resume_text, match.missing_keywords)
         cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
@@ -124,7 +124,6 @@ class JobPilot:
             try:
                 tailored = await tailor_resume_with_llm(resume_text, job.description, model=self.model)
             except Exception:
-                # Document generation is optional; browser autofill must remain usable without it.
                 tailored = tailor_resume_text(resume_text, match.missing_keywords)
             try:
                 cover_letter = await build_cover_letter_with_llm(job, profile, resume_text, model=self.model)
