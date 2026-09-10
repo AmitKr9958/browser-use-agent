@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 from typing import Any
 
 from browser_agent.agents.agent import run_on_tab
@@ -48,10 +49,12 @@ Resume file: {resume_path}
 OBJECTIVE
 1. Inspect the currently open application page and identify all visible application fields, including fields inside supported frames.
 2. Fill only fields for which a value is explicitly supplied below or is directly supported by the resume.
-3. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
-4. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
-5. Verify filled values after interaction where the page permits.
-6. STOP before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
+3. Handle native inputs, custom comboboxes, radio groups, checkboxes, date fields, and file-upload controls by using their visible labels/placeholders/accessible names and then verify the resulting value.
+4. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
+5. For multi-step application wizards, you may click safe Next, Continue, Save and Continue, or Save for Later controls to progress when they are clearly not final submission controls. Re-scan and verify each new page before continuing.
+6. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
+7. Verify filled values after interaction where the page permits.
+8. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
 
 SUPPLIED PROFILE
 {contact_lines}
@@ -141,8 +144,15 @@ class JobPilot:
         plan.validate()
         return plan
 
+    @staticmethod
+    def _validate_resume_path(resume_path: str) -> None:
+        path = Path(resume_path).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"resume not found: {path}")
+
     async def apply_to_open_page(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Fill the already-open application page and stop before submission."""
+        self._validate_resume_path(resume_path)
         return await run_on_tab(
             build_application_task(plan, resume_path=resume_path),
             TabSelector(index=0),
@@ -156,6 +166,7 @@ class JobPilot:
         """Open a supplied application URL, then perform controlled autofill."""
         if not plan.job.url.strip():
             raise ValueError("job application URL must be supplied")
+        self._validate_resume_path(resume_path)
         session = connect_browser_harness()
         try:
             opened = await open_url(plan.job.url, browser_session=session)
