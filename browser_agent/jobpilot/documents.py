@@ -86,7 +86,7 @@ def write_resume_docx(resume_text: str, output_path: str | Path) -> Path:
             document.add_paragraph(line[2:].strip(), style="List Bullet")
         else:
             document.add_paragraph(line)
-    document.save(path)
+    document.save(str(path))
     return path
 
 
@@ -118,14 +118,10 @@ async def build_cover_letter_with_llm(
     if not resume_text.strip():
         return build_cover_letter(job, profile)
     prompt = f"""
-Write a concise, professional cover letter for this job.
-
-STRICT RULES:
-- Use only facts explicitly present in the resume or contact profile below.
-- Do not invent achievements, employers, technologies, years, certifications, metrics, or responsibilities.
-- Do not mention skills that are not supported by the resume.
-- Keep it to 250 words or fewer.
-- Return only the letter text.
+Write a concise cover letter for this job using only facts present in the supplied profile and resume.
+Do not invent employers, achievements, metrics, skills, credentials, dates, or experience.
+Keep it professional, specific to the role, ATS-friendly, and under 250 words.
+Return only the cover letter.
 
 JOB:
 Title: {job.title}
@@ -133,8 +129,9 @@ Company: {job.company}
 Description:
 {job.description}
 
-CONTACT PROFILE:
+PROFILE:
 Name: {profile.name}
+Location: {profile.location}
 
 RESUME:
 {resume_text}
@@ -143,5 +140,5 @@ RESUME:
     response = await llm.ainvoke([UserMessage(content=prompt)])
     output = str(response.completion).strip()
     if not output:
-        raise RuntimeError("cover-letter model returned empty output")
+        raise RuntimeError("cover letter model returned empty output")
     return output
