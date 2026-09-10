@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import fields
 from pathlib import Path
 
 from docx import Document
@@ -37,7 +38,7 @@ def load_contact_profile(path: str | Path) -> ContactProfile:
     data = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("contact profile must be a JSON object")
-    allowed = set(ContactProfile.__dataclass_fields__)
+    allowed = {item.name for item in fields(ContactProfile)}
     unknown = set(data) - allowed
     if unknown:
         raise ValueError(f"unknown contact fields: {', '.join(sorted(unknown))}")
