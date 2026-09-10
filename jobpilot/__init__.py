@@ -9,10 +9,12 @@ from .generator import answer_application_question
 from .models import ApplicationReview, Job, JobApplicationDraft, ResumeProfile
 from .pipeline import JobPilot
 from .resume_io import read_resume, write_ats_docx
+from .resume_quality import ResumeQuality, validate_ats_resume
 
 __all__ = [
     "ATS", "ApplicationReview", "CareerPage", "CareerPageRegistry", "Job",
-    "JobApplicationDraft", "JobPilot", "ResumeProfile", "answer_application_question",
-    "build_field_values", "classify_field", "detect_ats", "is_safe_autofill_label",
-    "map_form_fields", "read_resume", "upload_file_by_dom_index", "write_ats_docx",
+    "JobApplicationDraft", "JobPilot", "ResumeProfile", "ResumeQuality",
+    "answer_application_question", "build_field_values", "classify_field", "detect_ats",
+    "is_safe_autofill_label", "map_form_fields", "read_resume", "upload_file_by_dom_index",
+    "validate_ats_resume", "write_ats_docx",
 ]
