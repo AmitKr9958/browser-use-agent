@@ -1,5 +1,7 @@
 """Connection-layer tests; Browser Harness is mocked so CI needs no Chrome."""
 
+from typing import cast
+
 from browser_agent.connection import harness
 
 
@@ -11,7 +13,7 @@ def test_connect_browser_harness_uses_dynamic_ws(monkeypatch):
     monkeypatch.setattr(harness, "get_ws_url", lambda: "ws://127.0.0.1:64173/devtools/browser/test")
     monkeypatch.setattr(harness, "BrowserSession", FakeSession)
 
-    session = harness.connect_browser_harness()
+    session = cast(FakeSession, harness.connect_browser_harness())
     assert session.cdp_url.endswith("/devtools/browser/test")
 
 
