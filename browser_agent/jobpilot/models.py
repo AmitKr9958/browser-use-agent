@@ -44,6 +44,7 @@ class ApplicationPlan:
     """Artifacts and browser instructions prepared before any sensitive action."""
 
     job: JobDescription
+    profile: ContactProfile
     match: MatchScore
     tailored_resume_text: str
     cover_letter: str
