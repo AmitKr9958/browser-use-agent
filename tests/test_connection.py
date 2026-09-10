@@ -5,7 +5,7 @@ from browser_agent.connection import harness
 
 def test_connect_browser_harness_uses_dynamic_ws(monkeypatch):
     class FakeSession:
-        def __init__(self, *, cdp_url):
+        def __init__(self, *, cdp_url: str) -> None:
             self.cdp_url = cdp_url
 
     monkeypatch.setattr(harness, "get_ws_url", lambda: "ws://127.0.0.1:64173/devtools/browser/test")
