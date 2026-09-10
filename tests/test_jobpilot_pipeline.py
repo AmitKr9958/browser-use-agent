@@ -19,7 +19,7 @@ class _LLM:
     async def ainvoke(self, messages: object) -> _Response:
         self.calls += 1
         if self.calls == 1:
-            return _Response("# Amit Kumar\n\n## Skills\nPython, SQL")
+            return _Response("# Amit Kumar\namit@example.com\n\n## Skills\nPython, SQL")
         return _Response("Dear Hiring Team,\n\nI am interested in this role.")
 
 
