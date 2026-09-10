@@ -1,4 +1,4 @@
-"""Prompt builders for resume and cover-letter generation."""
+"""Prompt builders for JobPilot application material and questions."""
 
 from __future__ import annotations
 
@@ -48,4 +48,25 @@ Rules:
 - Focus on the strongest evidence relevant to this role.
 - Keep it professional and concise.
 Return only the cover letter text.
+"""
+
+
+def application_question_prompt(job: Job, profile: ResumeProfile, question: str) -> str:
+    return f"""Answer this job-application question using only verified candidate facts.
+
+JOB
+{job.model_dump_json(indent=2)}
+
+CANDIDATE FACTS
+{profile.model_dump_json(indent=2)}
+
+QUESTION
+{question}
+
+Rules:
+- Never invent or infer a fact that is not supported by the candidate data.
+- If the answer is not supported, return exactly: NEEDS_REVIEW
+- Do not answer passwords, OTPs, payment details, government identifiers, or other sensitive data.
+- Keep the answer concise and suitable for a job application.
+Return only the answer.
 """
