@@ -5,11 +5,13 @@ on:
     paths:
       - 'browser_agent/**'
       - 'tests/test_*.py'
+      - 'pyproject.toml'
       - '.github/workflows/browser-agent-ci.yml'
   pull_request:
     paths:
       - 'browser_agent/**'
       - 'tests/test_*.py'
+      - 'pyproject.toml'
       - '.github/workflows/browser-agent-ci.yml'
 
 jobs:
@@ -24,3 +26,21 @@ jobs:
         run: uv sync --dev
       - name: Run browser-agent unit tests
         run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py -q
+      - name: Lint browser-agent layer
+        run: uv run ruff check browser_agent tests/test_tabs.py tests/test_connection.py tests/test_agent.py
+      - name: Type-check browser-agent layer
+        run: uv run pyright browser_agent
+      - name: Build distribution
+        run: uv build
+      - name: Verify application layer is packaged
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheels = glob.glob('dist/*.whl')
+          assert wheels, 'No wheel was produced'
+          with zipfile.ZipFile(wheels[0]) as zf:
+              names = zf.namelist()
+              assert any(n.startswith('browser_agent/') for n in names), 'browser_agent package missing from wheel'
+          print(f'Package verification passed: {wheels[0]}')
+          PY
