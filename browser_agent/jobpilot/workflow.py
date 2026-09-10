@@ -119,10 +119,13 @@ class JobPilot:
             raise ValueError("job application URL must be supplied")
         session = connect_browser_harness()
         try:
-            await open_url(plan.job.url, browser_session=session)
+            opened = await open_url(plan.job.url, browser_session=session)
+            target_id = opened.get("target_id", "").strip()
+            if not target_id:
+                raise RuntimeError("Browser did not return a target id for the application page")
             return await run_on_tab(
                 build_application_task(plan, resume_path=resume_path),
-                TabSelector(index=0),
+                TabSelector(target_id=target_id),
                 model=self.model,
                 browser_session=session,
                 max_steps=self.max_steps,
