@@ -9,6 +9,7 @@ from browser_use import Agent, ChatGoogle
 
 from browser_agent.connection.harness import connect_browser_harness
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
+from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
 from browser_agent.tabs.models import TabRecord, TabSelector
 
@@ -17,7 +18,6 @@ async def _await_if_needed(value: Any) -> Any:
     """Await a result when it is awaitable; otherwise return it unchanged."""
     if inspect.isawaitable(value):
         return await value
-
     return value
 
 
@@ -26,6 +26,21 @@ async def _best_effort_stop(session: Any) -> None:
     stop = getattr(session, "stop", None)
     if callable(stop):
         await _await_if_needed(cast(Any, stop)())
+
+
+def _build_task(
+    task: str,
+    india_runtime: IndiaRuntimeConfig | None,
+    interaction_policy: SensitiveInteractionPolicy | None,
+) -> str:
+    """Build the model instruction without altering the caller's task semantics."""
+    sections: list[str] = []
+    if india_runtime is not None:
+        sections.append(india_runtime.instruction())
+    if interaction_policy is not None:
+        sections.append(interaction_policy.instruction())
+    sections.append(f"Task:\n{task}" if sections else task)
+    return "\n\n".join(sections)
 
 
 async def run_on_tab(
@@ -38,11 +53,12 @@ async def run_on_tab(
     llm_timeout: int | None = None,
     step_timeout: int | None = None,
     india_runtime: IndiaRuntimeConfig | None = DEFAULT_INDIA_RUNTIME,
+    interaction_policy: SensitiveInteractionPolicy | None = DEFAULT_SENSITIVE_POLICY,
 ) -> Any:
     """Select one tab, run the agent, verify the target, and clean up owned sessions.
 
-    Indian regional conventions are included by default. Pass ``india_runtime=None``
-    when a task must use no regional guidance.
+    Indian regional conventions and conservative sensitive-interaction boundaries are
+    enabled by default. Pass either option as ``None`` to disable that guidance.
     """
     if not task.strip():
         raise ValueError("task must not be empty")
@@ -57,10 +73,7 @@ async def run_on_tab(
     session = browser_session or connect_browser_harness()
     manager = TabManager(session)
     selected: TabRecord = await manager.select_tab(selector)
-
-    effective_task = task
-    if india_runtime is not None:
-        effective_task = f"{india_runtime.instruction()}\n\nTask:\n{task}"
+    effective_task = _build_task(task, india_runtime, interaction_policy)
 
     agent_kwargs: dict[str, Any] = {
         "task": effective_task,
@@ -91,8 +104,7 @@ async def run_on_tab(
 
         return history
     finally:
-        # An internally-created session must be explicitly stopped so Browser Use's
-        # reconnect/watchdog tasks cannot survive the CLI event loop. keep_alive=True
-        # on the Harness profile keeps the external Chrome browser alive.
+        # Only stop sessions created by this function. A caller-provided session may
+        # be shared by a larger application and remains the caller's responsibility.
         if owns_session:
             await _best_effort_stop(session)
