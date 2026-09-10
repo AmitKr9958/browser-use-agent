@@ -1,5 +1,7 @@
 """Orchestration tests without making an LLM request."""
 
+import inspect
+
 import pytest
 
 from browser_agent.agents.agent import run_on_tab
@@ -61,6 +63,27 @@ async def test_run_on_tab_verifies_before_and_after(monkeypatch):
     assert history.final_result() == "ok"
     assert captured["browser_session"] is session
     assert captured["task"] == "Read the page title"
+
+
+@pytest.mark.asyncio
+async def test_run_on_tab_accepts_sync_agent_run(monkeypatch):
+    session = FakeSession()
+    verification_session = FakeSession()
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self):
+            return FakeHistory()
+
+    monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
+    monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
+    monkeypatch.setattr("browser_agent.agents.agent.connect_browser_harness", lambda: verification_session)
+
+    history = await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
+    assert history.final_result() == "ok"
+    assert not inspect.isawaitable(history)
 
 
 @pytest.mark.asyncio
