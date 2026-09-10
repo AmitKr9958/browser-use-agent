@@ -1,7 +1,12 @@
 """JobPilot MVP: job-aware, safety-first application assistance built on Browser Use."""
 
 from .ats import score_job_match
-from .documents import build_cover_letter, tailor_resume_text
+from .documents import (
+    build_cover_letter,
+    build_cover_letter_with_llm,
+    tailor_resume_text,
+    tailor_resume_with_llm,
+)
 from .models import ApplicationPlan, ContactProfile, JobDescription
 from .profile import extract_resume_text, load_contact_profile
 from .workflow import JobPilot, build_application_task
@@ -13,8 +18,10 @@ __all__ = [
     "JobPilot",
     "build_application_task",
     "build_cover_letter",
+    "build_cover_letter_with_llm",
     "extract_resume_text",
     "load_contact_profile",
     "score_job_match",
     "tailor_resume_text",
+    "tailor_resume_with_llm",
 ]
