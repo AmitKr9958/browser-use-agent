@@ -77,20 +77,24 @@ class TabManager:
         selected = await self.find_tab(selector)
 
         # Browser Use 0.13.x exposes tab switching through its event bus rather
-        # than a BrowserSession.switch_to_tab() method. Use the stable target_id
-        # so tab order changes cannot redirect the operation to another target.
-        event_bus = getattr(self.browser_session, "event_bus", None)
-        dispatch = getattr(event_bus, "dispatch", None)
-        if not callable(dispatch):
-            raise RuntimeError("BrowserSession event bus is unavailable")
+        # than a BrowserSession.switch_to_tab() method. Some lightweight test
+        # doubles still expose switch_to_tab(), so retain that compatibility path.
+        switch_to_tab = getattr(self.browser_session, "switch_to_tab", None)
+        if callable(switch_to_tab):
+            await _await_if_needed(cast(Any, switch_to_tab)(selected.index))
+        else:
+            event_bus = getattr(self.browser_session, "event_bus", None)
+            dispatch = getattr(event_bus, "dispatch", None)
+            if not callable(dispatch):
+                raise RuntimeError("BrowserSession event bus is unavailable")
 
-        switched_target = await _await_if_needed(
-            cast(Any, dispatch)(SwitchTabEvent(target_id=selected.target_id))
-        )
-        if switched_target is not None and str(switched_target) != selected.target_id:
-            raise TabVerificationError(
-                f"Tab switch returned unexpected target: expected {selected.target_id}, got {switched_target}"
+            switched_target = await _await_if_needed(
+                cast(Any, dispatch)(SwitchTabEvent(target_id=selected.target_id))
             )
+            if switched_target is not None and str(switched_target) != selected.target_id:
+                raise TabVerificationError(
+                    f"Tab switch returned unexpected target: expected {selected.target_id}, got {switched_target}"
+                )
 
         await self.verify_tab(selected)
         return selected
