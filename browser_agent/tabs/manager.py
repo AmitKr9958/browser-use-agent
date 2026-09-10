@@ -73,27 +73,33 @@ class TabManager:
         """Switch to exactly one tab and verify stable target identity."""
         selected = await self.find_tab(selector)
 
-        # Browser Use 0.13.x exposes tab switching through its event bus rather
-        # than a BrowserSession.switch_to_tab() method. Dispatch and then wait
-        # for the typed event result, matching Browser Use's own tool path.
-        event_bus = getattr(self.browser_session, "event_bus", None)
-        dispatch = getattr(event_bus, "dispatch", None)
-        if callable(dispatch):
-            event = cast(Any, dispatch)(SwitchTabEvent(target_id=selected.target_id))
-            await _await_if_needed(event)
-            switched_target = await _await_if_needed(
-                cast(Any, event).event_result(raise_if_any=True, raise_if_none=True)
-            )
-            if str(switched_target) != selected.target_id:
-                raise TabVerificationError(
-                    f"Tab switch returned unexpected target: expected {selected.target_id}, got {switched_target}"
+        # If Chrome is already showing the requested target, do not dispatch a
+        # redundant SwitchTabEvent. This avoids re-entering Browser Use's focus
+        # watchdog for an already-active external Harness target.
+        try:
+            current_url = str(await self.browser_session.get_current_page_url() or "")
+            current_title = str(await self.browser_session.get_current_page_title() or "")
+        except Exception:
+            current_url = current_title = ""
+
+        if current_url != selected.url or current_title != selected.title:
+            event_bus = getattr(self.browser_session, "event_bus", None)
+            dispatch = getattr(event_bus, "dispatch", None)
+            if callable(dispatch):
+                event = cast(Any, dispatch)(SwitchTabEvent(target_id=selected.target_id))
+                await _await_if_needed(event)
+                switched_target = await _await_if_needed(
+                    cast(Any, event).event_result(raise_if_any=True, raise_if_none=True)
                 )
-        else:
-            # Keep compatibility with lightweight test doubles and older sessions.
-            switch_to_tab = getattr(self.browser_session, "switch_to_tab", None)
-            if not callable(switch_to_tab):
-                raise RuntimeError("BrowserSession has no supported tab-switch mechanism")
-            await _await_if_needed(cast(Any, switch_to_tab)(selected.index))
+                if str(switched_target) != selected.target_id:
+                    raise TabVerificationError(
+                        f"Tab switch returned unexpected target: expected {selected.target_id}, got {switched_target}"
+                    )
+            else:
+                switch_to_tab = getattr(self.browser_session, "switch_to_tab", None)
+                if not callable(switch_to_tab):
+                    raise RuntimeError("BrowserSession has no supported tab-switch mechanism")
+                await _await_if_needed(cast(Any, switch_to_tab)(selected.index))
 
         await self.verify_tab(selected)
         return selected
@@ -108,6 +114,11 @@ class TabManager:
 
         actual_url = str(await self.browser_session.get_current_page_url() or "")
         actual_title = str(await self.browser_session.get_current_page_title() or "")
+        if actual_url != expected.url or actual_title != expected.title:
+            raise TabVerificationError(
+                f"Active tab metadata changed: expected {expected.title!r} / {expected.url!r}, "
+                f"got {actual_title!r} / {actual_url!r}"
+            )
         return TabRecord(expected.index, expected.target_id, actual_title, actual_url)
 
     @staticmethod
