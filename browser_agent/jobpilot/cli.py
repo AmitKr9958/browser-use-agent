@@ -7,6 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from .application import build_application_report_from_result
 from .documents import write_resume_docx
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
@@ -84,8 +85,18 @@ async def _run(args: argparse.Namespace) -> int:
     result = await pilot.apply_to_url(plan, resume_path=args.resume)
     final_result = getattr(result, "final_result", None)
     output = final_result() if callable(final_result) else str(result)
-    print(json.dumps({"success": True, "result": output, "auto_submit": False}, indent=2))
-    return 0
+    report = build_application_report_from_result(target_url=job.url, raw_result=output)
+    print(json.dumps({
+        "success": report.status in {"completed", "blocked"},
+        "status": report.status,
+        "filled_fields": report.filled_fields,
+        "skipped_fields": report.skipped_fields,
+        "blockers": report.blockers,
+        "submitted": report.submitted,
+        "result": report.raw_result,
+        "metadata": report.metadata,
+    }, indent=2))
+    return 0 if report.status in {"completed", "blocked"} else 1
 
 
 def main() -> None:
