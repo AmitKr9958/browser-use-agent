@@ -84,7 +84,7 @@ async def _run(args: argparse.Namespace) -> int:
     plan = pilot.prepare_plan(job, resume_text, profile)
     result = await pilot.apply_to_url(plan, resume_path=args.resume)
     final_result = getattr(result, "final_result", None)
-    output = final_result() if callable(final_result) else str(result)
+    output = str(final_result()) if callable(final_result) else str(result)
     report = build_application_report_from_result(target_url=job.url, raw_result=output)
     print(json.dumps({
         "success": report.status in {"completed", "blocked"},
