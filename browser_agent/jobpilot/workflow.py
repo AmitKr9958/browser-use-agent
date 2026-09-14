@@ -3,23 +3,19 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 from typing import Any
 
-from browser_agent.agents.agent import run_on_tab
 from browser_agent.actions.basic import open_url
+from browser_agent.agents.agent import run_on_tab
 from browser_agent.connection.harness import connect_browser_harness
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY
 from browser_agent.tabs.models import TabSelector
 
 from .ats import score_job_match
-from .documents import (
-    build_cover_letter,
-    build_cover_letter_with_llm,
-    tailor_resume_text,
-    tailor_resume_with_llm,
-)
+from .documents import build_cover_letter, build_cover_letter_with_llm, tailor_resume_text, tailor_resume_with_llm
 from .models import ApplicationPlan, ContactProfile, JobDescription
 
 
@@ -75,6 +71,77 @@ SAFETY
 """.strip()
 
 
+def build_job_extraction_task(url: str) -> str:
+    """Build a read-only browser task that extracts the public job posting."""
+    return f"""
+Open and inspect the public job posting at {url}.
+Do not click Apply, Submit, Send, Continue into an application, or perform any login.
+Return ONLY valid JSON with these string fields: title, company, location, description.
+Use the actual visible job posting text. Put responsibilities, required skills, preferred skills, experience, education and other relevant requirements into description.
+Do not invent missing facts. If a field is not visible, return an empty string.
+""".strip()
+
+
+def _history_text(history: Any) -> str:
+    final_result = getattr(history, "final_result", None)
+    if callable(final_result):
+        return str(final_result())
+    return str(history)
+
+
+def _parse_job_description_result(raw: str, *, url: str, fallback: JobDescription) -> JobDescription:
+    """Parse the agent's JSON result without accepting fabricated non-JSON prose."""
+    text = raw.strip()
+    if "```" in text:
+        text = text.replace("```json", "").replace("```", "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("job description extractor did not return JSON")
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise ValueError("job description extractor returned invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise ValueError("job description extractor returned a non-object")
+    title = str(data.get("title", "")).strip()
+    company = str(data.get("company", "")).strip()
+    location = str(data.get("location", "")).strip()
+    description = str(data.get("description", "")).strip()
+    if not title or not company or not description:
+        raise ValueError("job description extractor returned incomplete job data")
+    return JobDescription(title=title, company=company, description=description, url=url, location=location)
+
+
+async def extract_job_description_from_url(url: str, *, model: str = "gemini-3.6-flash", max_steps: int = 40) -> JobDescription:
+    """Read a public job URL and return a validated normalized JobDescription."""
+    if not url.strip():
+        raise ValueError("job URL must not be empty")
+    if max_steps < 1:
+        raise ValueError("max_steps must be at least 1")
+    session = connect_browser_harness()
+    try:
+        opened = await open_url(url, browser_session=session)
+        target_id = opened.get("target_id", "").strip()
+        if not target_id:
+            raise RuntimeError("Browser did not return a target id for the job page")
+        history = await run_on_tab(
+            build_job_extraction_task(url),
+            TabSelector(target_id=target_id),
+            model=model,
+            browser_session=session,
+            max_steps=max_steps,
+            india_runtime=DEFAULT_INDIA_RUNTIME,
+            interaction_policy=DEFAULT_SENSITIVE_POLICY,
+        )
+        return _parse_job_description_result(_history_text(history), url=url, fallback=JobDescription(title="", company="", description="", url=url))
+    finally:
+        stop = getattr(session, "stop", None)
+        if callable(stop):
+            result = stop()
+            if inspect.isawaitable(result):
+                await result
+
+
 class JobPilot:
     """High-level JobPilot workflow using the existing Browser Use/Harness stack."""
 
@@ -86,38 +153,17 @@ class JobPilot:
         self.model = model
         self.max_steps = max_steps
 
-    def prepare_plan(
-        self,
-        job: JobDescription,
-        resume_text: str,
-        profile: ContactProfile,
-        *,
-        answers: dict[str, str] | None = None,
-    ) -> ApplicationPlan:
+    def prepare_plan(self, job: JobDescription, resume_text: str, profile: ContactProfile, *, answers: dict[str, str] | None = None) -> ApplicationPlan:
         """Prepare deterministic ATS score and safe document variants."""
         match = score_job_match(job.description, resume_text)
         tailored = tailor_resume_text(resume_text, match.missing_keywords)
         cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
-        plan = ApplicationPlan(
-            job=job,
-            profile=profile,
-            match=match,
-            tailored_resume_text=tailored,
-            cover_letter=cover_letter,
-            answers=dict(answers or {}),
-            auto_submit=False,
-        )
+        plan = ApplicationPlan(job=job, profile=profile, match=match, tailored_resume_text=tailored, cover_letter=cover_letter, answers=dict(answers or {}), auto_submit=False)
         plan.validate()
         return plan
 
     async def prepare_plan_async(
-        self,
-        job: JobDescription,
-        resume_text: str,
-        profile: ContactProfile,
-        *,
-        answers: dict[str, str] | None = None,
-        use_llm: bool = True,
+        self, job: JobDescription, resume_text: str, profile: ContactProfile, *, answers: dict[str, str] | None = None, use_llm: bool = True
     ) -> ApplicationPlan:
         """Prepare an ATS score plus LLM drafts, falling back safely when unavailable."""
         match = score_job_match(job.description, resume_text)
@@ -132,15 +178,7 @@ class JobPilot:
                 cover_letter = await build_cover_letter_with_llm(job, profile, resume_text, model=self.model)
             except Exception:
                 cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
-        plan = ApplicationPlan(
-            job=job,
-            profile=profile,
-            match=match,
-            tailored_resume_text=tailored,
-            cover_letter=cover_letter,
-            answers=dict(answers or {}),
-            auto_submit=False,
-        )
+        plan = ApplicationPlan(job=job, profile=profile, match=match, tailored_resume_text=tailored, cover_letter=cover_letter, answers=dict(answers or {}), auto_submit=False)
         plan.validate()
         return plan
 
@@ -153,14 +191,7 @@ class JobPilot:
     async def apply_to_open_page(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Fill the already-open application page and stop before submission."""
         self._validate_resume_path(resume_path)
-        return await run_on_tab(
-            build_application_task(plan, resume_path=resume_path),
-            TabSelector(index=0),
-            model=self.model,
-            max_steps=self.max_steps,
-            india_runtime=DEFAULT_INDIA_RUNTIME,
-            interaction_policy=DEFAULT_SENSITIVE_POLICY,
-        )
+        return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(index=0), model=self.model, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
 
     async def apply_to_url(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Open a supplied application URL, then perform controlled autofill."""
@@ -173,15 +204,7 @@ class JobPilot:
             target_id = opened.get("target_id", "").strip()
             if not target_id:
                 raise RuntimeError("Browser did not return a target id for the application page")
-            return await run_on_tab(
-                build_application_task(plan, resume_path=resume_path),
-                TabSelector(target_id=target_id),
-                model=self.model,
-                browser_session=session,
-                max_steps=self.max_steps,
-                india_runtime=DEFAULT_INDIA_RUNTIME,
-                interaction_policy=DEFAULT_SENSITIVE_POLICY,
-            )
+            return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(target_id=target_id), model=self.model, browser_session=session, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
         finally:
             stop = getattr(session, "stop", None)
             if callable(stop):
