@@ -12,7 +12,7 @@ from .documents import write_resume_docx
 from .job_source import get_job_posting_xlsx
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
-from .workflow import JobPilot
+from .workflow import JobPilot, extract_job_description_from_url
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     workbook.add_argument("--max-steps", type=int, default=80)
     workbook.add_argument("--output-dir", default="", help="Optional directory for tailored resume and cover letter drafts")
     workbook.add_argument("--no-llm", action="store_true", help="Use deterministic drafts without a Gemini call")
-    workbook.add_argument("--apply", action="store_true", help="Open the row URL and safely autofill; never submits")
+    workbook.add_argument("--apply", action="store_true", help="Extract the live JD, open the row URL and safely autofill; never submits")
 
     apply = sub.add_parser("apply", help="Open an application URL and safely autofill it")
     apply.add_argument("--title", required=True)
@@ -72,11 +72,7 @@ def _write_artifacts(plan, output_dir: str) -> dict[str, str]:
     resume_txt.write_text(plan.tailored_resume_text, encoding="utf-8")
     write_resume_docx(plan.tailored_resume_text, resume_docx)
     cover_out.write_text(plan.cover_letter, encoding="utf-8")
-    return {
-        "tailored_resume_text": str(resume_txt),
-        "tailored_resume_docx": str(resume_docx),
-        "cover_letter": str(cover_out),
-    }
+    return {"tailored_resume_text": str(resume_txt), "tailored_resume_docx": str(resume_docx), "cover_letter": str(cover_out)}
 
 
 def _plan_output(plan, artifacts: dict[str, str]) -> dict[str, object]:
@@ -97,10 +93,17 @@ async def _run_workbook(args: argparse.Namespace) -> int:
     resume_text = extract_resume_text(args.resume)
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
     pilot = JobPilot(model=args.model, max_steps=args.max_steps)
-    plan = await pilot.prepare_plan_async(posting.job, resume_text, profile, use_llm=not args.no_llm)
+    job = posting.job
+    extraction = {"attempted": False, "verified": False}
+    if args.apply:
+        extraction["attempted"] = True
+        job = await extract_job_description_from_url(posting.job.url, model=args.model, max_steps=min(args.max_steps, 40))
+        extraction["verified"] = True
+    plan = await pilot.prepare_plan_async(job, resume_text, profile, use_llm=not args.no_llm)
     output = {
-        "source": {"file": str(Path(args.file).expanduser()), "row": posting.row_number, "workbook_match_score": posting.match_score},
-        "job": posting.job.model_dump(),
+        "source": {"file": str(Path(args.file).expanduser()), "row": posting.row_number, "workbook_match_score": posting.match_score, "job_url": posting.job.url},
+        "job": job.model_dump(),
+        "job_extraction": extraction,
         "plan": _plan_output(plan, _write_artifacts(plan, args.output_dir)),
     }
     if args.apply:
@@ -138,16 +141,7 @@ async def _run(args: argparse.Namespace) -> int:
     final_result = getattr(result, "final_result", None)
     output = str(final_result()) if callable(final_result) else str(result)
     report = build_application_report_from_result(target_url=job.url, raw_result=output)
-    print(json.dumps({
-        "success": report.status in {"completed", "blocked"},
-        "status": report.status,
-        "filled_fields": report.filled_fields,
-        "skipped_fields": report.skipped_fields,
-        "blockers": report.blockers,
-        "submitted": report.submitted,
-        "result": report.raw_result,
-        "metadata": report.metadata,
-    }, indent=2))
+    print(json.dumps({"success": report.status in {"completed", "blocked"}, "status": report.status, "filled_fields": report.filled_fields, "skipped_fields": report.skipped_fields, "blockers": report.blockers, "submitted": report.submitted, "result": report.raw_result, "metadata": report.metadata}, indent=2))
     return 0 if report.status in {"completed", "blocked"} else 1
 
 
