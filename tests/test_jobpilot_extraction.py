@@ -32,3 +32,13 @@ def test_job_extraction_task_is_read_only() -> None:
     assert "Do not click Apply" in task
     assert "Return ONLY valid JSON" in task
     assert "https://example.com/job" in task
+
+
+def test_job_extraction_task_rejects_non_http_scheme() -> None:
+    with pytest.raises(ValueError, match="valid http\(s\) URL"):
+        build_job_extraction_task("javascript:alert(1)")
+
+
+def test_job_extraction_task_rejects_missing_host() -> None:
+    with pytest.raises(ValueError, match="valid http\(s\) URL"):
+        build_job_extraction_task("https:///missing-host")
