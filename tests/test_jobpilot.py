@@ -1,5 +1,7 @@
 """Unit tests for the JobPilot MVP application layer."""
 
+import pytest
+
 from browser_agent.jobpilot.ats import score_job_match
 from browser_agent.jobpilot.documents import build_cover_letter, tailor_resume_text, write_resume_docx
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
@@ -26,6 +28,15 @@ def test_tailor_does_not_fabricate_experience() -> None:
     assert "Python developer" in output
     assert "Kubernetes" in output
     assert "experienced in Kubernetes" not in output
+
+
+def test_tailor_rejects_negative_addition_limit() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        tailor_resume_text("Python developer", ("Kubernetes",), max_additions=-1)
+
+
+def test_tailor_zero_additions_returns_clean_source() -> None:
+    assert tailor_resume_text("Python developer", ("Kubernetes",), max_additions=0) == "Python developer"
 
 
 def test_cover_letter_uses_supplied_identity_only() -> None:
