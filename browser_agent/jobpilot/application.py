@@ -14,14 +14,14 @@ _SUBMISSION_MARKERS = (
     "submitted successfully",
     "application has been submitted",
 )
-_BLOCKER_MARKERS = (
-    "captcha",
-    "mfa",
-    "otp",
-    "verification code",
-    "login required",
-    "payment required",
-    "identity verification",
+_BLOCKER_PATTERNS = (
+    re.compile(r"\bcaptcha\b", re.IGNORECASE),
+    re.compile(r"\bmfa\b", re.IGNORECASE),
+    re.compile(r"\botp\b", re.IGNORECASE),
+    re.compile(r"\bverification code\b", re.IGNORECASE),
+    re.compile(r"\blogin required\b", re.IGNORECASE),
+    re.compile(r"\bpayment required\b", re.IGNORECASE),
+    re.compile(r"\bidentity verification\b", re.IGNORECASE),
 )
 # Generic words such as "saved" or "filled" are intentionally excluded: an
 # agent can say those words without proving that a browser control changed.
@@ -39,13 +39,22 @@ _EXPLICIT_VERIFICATION_MARKERS = (
 )
 _EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)")
-_SECRET_RE = re.compile(r"\b(?:password|passwd|otp|one[- ]time code|verification code)\s*[:=]\s*\S+", re.IGNORECASE)
+_SECRET_RE = re.compile(
+    r"\b(password|passwd|otp|one[- ]time code|verification code)\s*[:=]\s*\S+",
+    re.IGNORECASE,
+)
 _MAX_RAW_RESULT = 8_000
+
+
+def _redact_secret(match: re.Match[str]) -> str:
+    """Redact the entire secret assignment without leaking its value."""
+    key = match.group(1)
+    return f"{key}: [REDACTED]"
 
 
 def _sanitize_result(text: str) -> str:
     """Remove common personal/secret values before a result is persisted or printed."""
-    sanitized = _SECRET_RE.sub(lambda match: f"{match.group(0).split(':', 1)[0]}: [REDACTED]", text)
+    sanitized = _SECRET_RE.sub(_redact_secret, text)
     sanitized = _EMAIL_RE.sub("[EMAIL REDACTED]", sanitized)
     sanitized = _PHONE_RE.sub("[PHONE REDACTED]", sanitized)
     return sanitized[:_MAX_RAW_RESULT]
@@ -121,7 +130,11 @@ def build_application_report_from_result(*, target_url: str, raw_result: str) ->
             metadata={"submission_signal": True, "verification_signal": False},
         )
 
-    blockers = tuple(marker for marker in _BLOCKER_MARKERS if marker in lowered)
+    blockers = tuple(
+        pattern.pattern.removeprefix(r"\b").removesuffix(r"\b")
+        for pattern in _BLOCKER_PATTERNS
+        if pattern.search(text)
+    )
     if blockers:
         return build_application_report(
             status="blocked",
