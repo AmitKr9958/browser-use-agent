@@ -35,10 +35,10 @@ def test_job_extraction_task_is_read_only() -> None:
 
 
 def test_job_extraction_task_rejects_non_http_scheme() -> None:
-    with pytest.raises(ValueError, match="valid http\(s\) URL"):
+    with pytest.raises(ValueError, match=r"valid http\(s\) URL"):
         build_job_extraction_task("javascript:alert(1)")
 
 
 def test_job_extraction_task_rejects_missing_host() -> None:
-    with pytest.raises(ValueError, match="valid http\(s\) URL"):
+    with pytest.raises(ValueError, match=r"valid http\(s\) URL"):
         build_job_extraction_task("https:///missing-host")
