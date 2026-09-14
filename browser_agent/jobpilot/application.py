@@ -25,10 +25,9 @@ _BLOCKER_MARKERS = (
 _VERIFICATION_MARKERS = (
     "verified",
     "filled",
-    "attached",
     "uploaded",
     "saved",
-    "review",
+    "attached",
 )
 
 
