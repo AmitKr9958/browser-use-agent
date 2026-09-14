@@ -46,6 +46,7 @@ dependencies = [
     "cloudpickle==3.1.2",
     "markdownify==1.2.2",
     "python-docx==1.2.0",
+    "openpyxl==3.1.5",
     "browser-use-sdk==3.4.2",
     "browser-harness==0.1.13",
 ]
@@ -155,10 +156,6 @@ timeout = 300
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
-markers = ["slow: marks tests as slow", "integration: marks tests as integration tests", "unit: marks tests as unit tests", "asyncio: mark async tests"]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-addopts = "-svx --strict-markers --tb=short --dist=loadscope"
 log_cli = true
 log_cli_format = "%(levelname)-8s [%(name)s] %(message)s"
 filterwarnings = ["ignore::pytest.PytestDeprecationWarning", "ignore::DeprecationWarning"]
