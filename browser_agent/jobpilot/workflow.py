@@ -6,6 +6,7 @@ import inspect
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from browser_agent.actions.basic import open_url
 from browser_agent.agents.agent import run_on_tab
@@ -17,6 +18,14 @@ from browser_agent.tabs.models import TabSelector
 from .ats import score_job_match
 from .documents import build_cover_letter, build_cover_letter_with_llm, tailor_resume_text, tailor_resume_with_llm
 from .models import ApplicationPlan, ContactProfile, JobDescription
+from .questionnaire import build_questionnaire_policy
+
+
+def _validate_web_url(url: str, *, field_name: str) -> None:
+    """Require a syntactically valid HTTP(S) URL before handing it to a browser."""
+    parsed = urlparse(url.strip())
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{field_name} must be a valid http(s) URL")
 
 
 def build_application_task(plan: ApplicationPlan, *, resume_path: str) -> str:
@@ -48,9 +57,10 @@ OBJECTIVE
 3. Handle native inputs, custom comboboxes, radio groups, checkboxes, date fields, and file-upload controls by using their visible labels/placeholders/accessible names and then verify the resulting value.
 4. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
 5. For multi-step application wizards, you may click safe Next, Continue, Save and Continue, or Save for Later controls to progress when they are clearly not final submission controls. Re-scan and verify each new page before continuing.
-6. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
-7. Verify filled values after interaction where the page permits.
-8. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
+6. Automatically answer ordinary career-site questions using the questionnaire policy below. Use only answers supported by the supplied profile or resume.
+7. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
+8. Verify filled values after interaction where the page permits.
+9. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
 
 SUPPLIED PROFILE
 {contact_lines}
@@ -61,6 +71,8 @@ ADDITIONAL ANSWERS
 RESUME/ATS CONTEXT
 Matched keywords: {', '.join(plan.match.matched_keywords) or 'none'}
 Missing keywords for review only: {', '.join(plan.match.missing_keywords) or 'none'}
+
+{build_questionnaire_policy()}
 
 SAFETY
 - Never invent personal information, employment history, education, dates, salary, authorization, sponsorship, identity numbers, passwords, OTPs, or demographic answers.
@@ -73,6 +85,7 @@ SAFETY
 
 def build_job_extraction_task(url: str) -> str:
     """Build a read-only browser task that extracts the public job posting."""
+    _validate_web_url(url, field_name="job URL")
     return f"""
 Open and inspect the public job posting at {url}.
 Do not click Apply, Submit, Send, Continue into an application, or perform any login.
@@ -114,8 +127,7 @@ def _parse_job_description_result(raw: str, *, url: str, fallback: JobDescriptio
 
 async def extract_job_description_from_url(url: str, *, model: str = "gemini-3.6-flash", max_steps: int = 40) -> JobDescription:
     """Read a public job URL and return a validated normalized JobDescription."""
-    if not url.strip():
-        raise ValueError("job URL must not be empty")
+    _validate_web_url(url, field_name="job URL")
     if max_steps < 1:
         raise ValueError("max_steps must be at least 1")
     session = connect_browser_harness()
@@ -195,8 +207,7 @@ class JobPilot:
 
     async def apply_to_url(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Open a supplied application URL, then perform controlled autofill."""
-        if not plan.job.url.strip():
-            raise ValueError("job application URL must be supplied")
+        _validate_web_url(plan.job.url, field_name="job application URL")
         self._validate_resume_path(resume_path)
         session = connect_browser_harness()
         try:
