@@ -44,12 +44,34 @@ def _matches_any(question: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
 
 
 def _skill_from_question(question: str, resume_text: str) -> str | None:
-    """Return yes only when a named skill is explicitly present in the resume."""
-    candidates = re.findall(r"[A-Za-z][A-Za-z0-9+#./ -]{1,40}", question)
+    """Return a named skill only when it is explicitly present in the resume."""
+    # Extract the subject of common skill questions instead of treating the
+    # whole question as a candidate phrase (which would miss "Power BI").
+    subject_patterns = (
+        re.compile(r"\b(?:experience|experienced|proficient|skilled)\s+(?:with|in)\s+(.+?)[?.!]*$", re.I),
+        re.compile(r"\b(?:have|possess)\s+(?:any\s+)?(?:experience|knowledge|skills?)\s+(?:with|in)\s+(.+?)[?.!]*$", re.I),
+        re.compile(r"\b(?:have|possess)\s+(.+?)\s+(?:experience|knowledge|skills?)[?.!]*$", re.I),
+    )
+    candidates: list[str] = []
+    for pattern in subject_patterns:
+        match = pattern.search(question)
+        if match:
+            candidates.append(match.group(1).strip(" ?.,:;()[]"))
+            break
+
+    # Also consider short noun phrases from the subject as a conservative
+    # fallback, while never answering from words that are not in the resume.
+    if not candidates:
+        cleaned = re.sub(r"\b(?:do you|are you|have you|any|experience|with|in|on)\b", " ", question, flags=re.I)
+        candidates.extend(
+            " ".join(part.split()).strip(" ?.,:;()[]")
+            for part in re.findall(r"[A-Za-z][A-Za-z0-9+#./ -]{1,40}", cleaned)
+        )
+
     resume_lower = resume_text.casefold()
+    ignored = {"the", "you", "have", "experience", "skill", "skills", "knowledge", "any"}
     for candidate in candidates:
-        candidate = " ".join(candidate.split()).strip(" ?.,:;()[]")
-        if len(candidate) < 3 or candidate.casefold() in {"the", "you", "have", "experience", "skill", "skills"}:
+        if len(candidate) < 3 or candidate.casefold() in ignored:
             continue
         if candidate.casefold() in resume_lower:
             return candidate
