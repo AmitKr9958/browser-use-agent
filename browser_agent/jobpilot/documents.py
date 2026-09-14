@@ -15,6 +15,8 @@ def tailor_resume_text(resume_text: str, missing_keywords: tuple[str, ...], *, m
     """Create a deterministic ATS review draft without inventing experience."""
     if not resume_text.strip():
         raise ValueError("resume_text must not be empty")
+    if max_additions < 0:
+        raise ValueError("max_additions must be non-negative")
     additions = tuple(dict.fromkeys(word.strip() for word in missing_keywords if word.strip()))[:max_additions]
     if not additions:
         return resume_text.strip()
