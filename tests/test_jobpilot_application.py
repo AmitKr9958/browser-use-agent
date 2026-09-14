@@ -71,3 +71,21 @@ def test_unverified_result_is_not_claimed_as_completed() -> None:
     )
     assert report.status == "blocked"
     assert report.metadata["verification_signal"] is False
+
+
+def test_review_instruction_is_not_itself_verification() -> None:
+    report = build_application_report_from_result(
+        target_url="https://example.com/apply",
+        raw_result="Review required before continuing.",
+    )
+    assert report.status == "blocked"
+    assert report.metadata["verification_signal"] is False
+
+
+def test_empty_result_is_failed() -> None:
+    report = build_application_report_from_result(
+        target_url="https://example.com/apply",
+        raw_result="   ",
+    )
+    assert report.status == "failed"
+    assert report.metadata["verification_signal"] is False
