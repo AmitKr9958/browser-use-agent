@@ -18,6 +18,7 @@ from browser_agent.tabs.models import TabSelector
 from .ats import score_job_match
 from .documents import build_cover_letter, build_cover_letter_with_llm, tailor_resume_text, tailor_resume_with_llm
 from .models import ApplicationPlan, ContactProfile, JobDescription
+from .questionnaire import build_questionnaire_policy
 
 
 def _validate_web_url(url: str, *, field_name: str) -> None:
@@ -56,9 +57,10 @@ OBJECTIVE
 3. Handle native inputs, custom comboboxes, radio groups, checkboxes, date fields, and file-upload controls by using their visible labels/placeholders/accessible names and then verify the resulting value.
 4. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
 5. For multi-step application wizards, you may click safe Next, Continue, Save and Continue, or Save for Later controls to progress when they are clearly not final submission controls. Re-scan and verify each new page before continuing.
-6. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
-7. Verify filled values after interaction where the page permits.
-8. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
+6. Automatically answer ordinary career-site questions using the questionnaire policy below. Use only answers supported by the supplied profile or resume.
+7. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
+8. Verify filled values after interaction where the page permits.
+9. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
 
 SUPPLIED PROFILE
 {contact_lines}
@@ -69,6 +71,8 @@ ADDITIONAL ANSWERS
 RESUME/ATS CONTEXT
 Matched keywords: {', '.join(plan.match.matched_keywords) or 'none'}
 Missing keywords for review only: {', '.join(plan.match.missing_keywords) or 'none'}
+
+{build_questionnaire_policy()}
 
 SAFETY
 - Never invent personal information, employment history, education, dates, salary, authorization, sponsorship, identity numbers, passwords, OTPs, or demographic answers.
