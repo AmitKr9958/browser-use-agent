@@ -38,9 +38,10 @@ def test_secret_assignment_is_fully_redacted_for_colon_and_equals() -> None:
 def test_otp_substring_does_not_create_false_blocker() -> None:
     report = build_application_report_from_result(
         target_url="https://example.com/apply",
-        raw_result="The profile section was updated and verified.",
+        raw_result="The profile section was fields verified.",
     )
     assert report.status == "completed"
+    assert report.metadata["verification_signal"] is True
 
 
 def test_submission_signal_is_never_reported_as_completed() -> None:
