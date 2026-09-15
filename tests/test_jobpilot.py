@@ -9,6 +9,7 @@ from browser_agent.jobpilot.documents import (
     validate_generated_resume,
     write_resume_docx,
 )
+from browser_agent.jobpilot.evidence import extract_resume_evidence, format_resume_evidence
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
 from browser_agent.jobpilot.profile import infer_contact_profile
 from browser_agent.jobpilot.workflow import JobPilot, build_application_task
@@ -54,6 +55,23 @@ def test_generated_resume_accepts_rewrite_with_existing_identifiers() -> None:
     source = "Amit Kumar\namit@example.com\n+91 98765 43210"
     generated = "Amit Kumar\nExperienced Python developer.\namit@example.com\n+91 98765 43210"
     assert validate_generated_resume(source, generated) == generated
+
+
+def test_resume_evidence_preserves_source_facts_and_sections() -> None:
+    resume = "Amit Kumar\n\n## Experience\n- Python Developer at Example Corp\n- Built internal reporting tools\n\n## Skills\nPython, Excel"
+    evidence = extract_resume_evidence(resume)
+    assert any(item.section == "Experience" and "Example Corp" in item.text for item in evidence)
+    assert any(item.section == "Skills" and "Python, Excel" in item.text for item in evidence)
+    formatted = format_resume_evidence(resume)
+    assert "[Experience] Python Developer at Example Corp" in formatted
+    assert "[Skills] Python, Excel" in formatted
+
+
+def test_resume_evidence_does_not_create_missing_facts() -> None:
+    resume = "Amit Kumar\n\n## Skills\nPython, Excel"
+    formatted = format_resume_evidence(resume)
+    assert "Kubernetes" not in formatted
+    assert "Azure" not in formatted
 
 
 def test_cover_letter_uses_supplied_identity_only() -> None:
