@@ -6,6 +6,7 @@ import pytest
 from browser_agent.actions.basic import click_selector, open_url, screenshot
 from browser_agent.agents.agent import _build_primary_llm
 from browser_agent.jobpilot.cli import _load_inputs
+from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
 from browser_agent.jobpilot.workflow import build_application_task
 from browser_use import Agent, ChatGoogle, ChatOpenAI
 
@@ -97,7 +98,13 @@ def test_load_inputs_still_accepts_description_file(tmp_path):
 
 
 def test_application_task_contains_generated_cover_letter_and_resume_path():
-    plan = type("Plan", (), {"job_description": "Python developer", "cover_letter": "Dear Hiring Team", "auto_submit": False})()
+    plan = ApplicationPlan(
+        job=JobDescription(title="Python Developer", company="Example Corp", description="Python developer", url="https://example.com/job"),
+        profile=ContactProfile(name="Amit Kumar", email="amit@example.com"),
+        match=MatchScore(score=100),
+        tailored_resume_text="Python developer",
+        cover_letter="Dear Hiring Team",
+    )
     task = build_application_task(plan, resume_path="C:\\Resume\\Amit.docx")
     assert "Resume file: C:\\Resume\\Amit.docx" in task
     assert "SUPPLIED GENERATED COVER LETTER" in task
