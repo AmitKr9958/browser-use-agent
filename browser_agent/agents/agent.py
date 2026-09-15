@@ -52,6 +52,21 @@ def _build_fallback_llm(fallback_model: str | None) -> Any | None:
     return ChatOpenAI(model=model)
 
 
+def _build_primary_llm(model: str) -> Any:
+    """Build the primary LLM, optionally routing through a local 9Router gateway.
+
+    When NINEROUTER_API_KEY is configured, JobPilot uses the OpenAI-compatible
+    9Router endpoint instead of calling Gemini directly. This keeps the credential
+    outside source control and lets 9Router handle provider routing/fallback.
+    """
+    router_key = os.getenv("NINEROUTER_API_KEY", "").strip()
+    if router_key:
+        base_url = os.getenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1").strip()
+        router_model = os.getenv("NINEROUTER_MODEL", model).strip() or model
+        return ChatOpenAI(base_url=base_url, model=router_model, api_key=router_key)
+    return ChatGoogle(model=model)
+
+
 async def run_on_tab(
     task: str,
     selector: TabSelector,
@@ -74,7 +89,8 @@ async def run_on_tab(
 
     ``available_file_paths`` explicitly grants Browser Use access to local files that
     the task is allowed to upload. ``fallback_model`` enables an OpenAI fallback only
-    when an ``OPENAI_API_KEY`` is present, avoiding an unnecessary credential failure.
+    when an ``OPENAI_API_KEY`` is present. If ``NINEROUTER_API_KEY`` is set, the
+    primary model is routed through the OpenAI-compatible 9Router gateway instead.
     """
     if not task.strip():
         raise ValueError("task must not be empty")
@@ -93,7 +109,7 @@ async def run_on_tab(
 
     agent_kwargs: dict[str, Any] = {
         "task": effective_task,
-        "llm": ChatGoogle(model=model),
+        "llm": _build_primary_llm(model),
         "browser_session": session,
         "use_judge": use_judge,
     }
@@ -111,8 +127,6 @@ async def run_on_tab(
         agent = Agent(**agent_kwargs)
         history = await _await_if_needed(cast(Any, agent.run(max_steps=max_steps)))
 
-        # Agent.run() can reset the session, so reconnect to the persistent Harness browser
-        # and verify that the original target still exists after execution.
         verification_session = connect_browser_harness()
         try:
             verification_manager = TabManager(verification_session)
@@ -126,7 +140,5 @@ async def run_on_tab(
 
         return history
     finally:
-        # Only stop sessions created by this function. A caller-provided session may
-        # be shared by a larger application and remains the caller's responsibility.
         if owns_session:
             await _best_effort_stop(session)
