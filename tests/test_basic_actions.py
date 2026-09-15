@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from browser_agent.actions.basic import click_selector, open_url, screenshot
+from browser_agent.connection.session_manager import BrowserSessionManager
 
 
 class FakeElement:
@@ -38,6 +39,7 @@ class FakePage:
 class FakeSession:
     def __init__(self) -> None:
         self.page = FakePage()
+        self.stop_calls = 0
 
     async def new_page(self, url: str) -> FakePage:
         self.page.url = url
@@ -45,6 +47,9 @@ class FakeSession:
 
     async def get_current_page(self) -> FakePage:
         return self.page
+
+    async def stop(self) -> None:
+        self.stop_calls += 1
 
 
 @pytest.mark.asyncio
@@ -71,3 +76,27 @@ async def test_screenshot_writes_png(tmp_path: Path) -> None:
     result = await screenshot(output, browser_session=FakeSession())
     assert result == output
     assert output.read_bytes() == b"fake-png"
+
+
+@pytest.mark.asyncio
+async def test_supplied_action_session_is_not_owned() -> None:
+    session = FakeSession()
+    await open_url("https://example.com", browser_session=session)
+    assert session.stop_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_session_manager_stops_only_owned_session(monkeypatch) -> None:
+    session = FakeSession()
+    started = False
+
+    async def fake_start():
+        nonlocal started
+        started = True
+        return session
+
+    monkeypatch.setattr("browser_agent.connection.session_manager.start_browser_harness_session", fake_start)
+    async with BrowserSessionManager() as owned:
+        assert owned is session
+        assert started is True
+    assert session.stop_calls == 1
