@@ -9,6 +9,7 @@ from browser_use import ChatGoogle
 from browser_use.llm.messages import UserMessage
 from docx import Document
 
+from .evidence import format_resume_evidence
 from .models import ContactProfile, JobDescription
 
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.I)
@@ -35,12 +36,7 @@ def tailor_resume_text(resume_text: str, missing_keywords: tuple[str, ...], *, m
 
 
 def validate_generated_resume(source_resume: str, generated_resume: str) -> str:
-    """Reject unsafe LLM resume output containing newly invented contact identifiers.
-
-    Rewriting can legitimately paraphrase prose, so validation deliberately checks
-    high-risk identifiers that should never change silently: email addresses, phone
-    numbers, and URLs. The original resume is returned for any unsafe output.
-    """
+    """Reject unsafe LLM resume output containing newly invented high-risk identifiers."""
     source = source_resume.strip()
     generated = generated_resume.strip()
     if not source or not generated:
@@ -49,22 +45,12 @@ def validate_generated_resume(source_resume: str, generated_resume: str) -> str:
     def normalize(values: list[str]) -> set[str]:
         return {value.rstrip(".,;:)").casefold() for value in values}
 
-    source_emails = normalize(_EMAIL_RE.findall(source))
-    generated_emails = normalize(_EMAIL_RE.findall(generated))
-    if not generated_emails.issubset(source_emails):
+    if not normalize(_EMAIL_RE.findall(generated)).issubset(normalize(_EMAIL_RE.findall(source))):
         return source
-
-    source_phones = normalize(_PHONE_RE.findall(source))
-    generated_phones = normalize(_PHONE_RE.findall(generated))
-    if not generated_phones.issubset(source_phones):
+    if not normalize(_PHONE_RE.findall(generated)).issubset(normalize(_PHONE_RE.findall(source))):
         return source
-
-    source_urls = normalize(_URL_RE.findall(source))
-    generated_urls = normalize(_URL_RE.findall(generated))
-    if not generated_urls.issubset(source_urls):
+    if not normalize(_URL_RE.findall(generated)).issubset(normalize(_URL_RE.findall(source))):
         return source
-
-    # Prevent an unexpectedly huge model response from becoming the artifact.
     if len(generated) > max(len(source) * 3, 20000):
         return source
     return generated
@@ -79,20 +65,25 @@ async def tailor_resume_with_llm(
     """Generate an ATS-focused resume draft while explicitly prohibiting invented facts."""
     if not resume_text.strip() or not job_description.strip():
         raise ValueError("resume_text and job_description must not be empty")
+    evidence = format_resume_evidence(resume_text)
     prompt = f"""
 Rewrite the resume below for the target job description.
 
 STRICT RULES:
-- Use only facts, employers, titles, dates, education, certifications, skills, and achievements already present in the source resume.
+- Treat SOURCE-BACKED EVIDENCE as the authoritative fact boundary.
+- Use only facts, employers, titles, dates, education, certifications, skills, and achievements present in the source resume/evidence.
 - Do not invent metrics, responsibilities, technologies, employers, credentials, locations, or years of experience.
 - You may reorder sections, tighten wording, remove repetition, and emphasize experience that is already present.
-- If a job keyword is not supported by the source resume, do not add it as a claimed skill.
+- If a job keyword is not supported by the source evidence, do not add it as a claimed skill.
 - Never change, invent, or add an email address, phone number, URL, employer, credential, date, metric, or identity detail.
 - Keep the output ATS-friendly: plain text headings, concise bullets, no tables, no icons, no graphics.
 - Return only the revised resume text, with no explanation.
 
 TARGET JOB:
 {job_description}
+
+SOURCE-BACKED EVIDENCE:
+{evidence}
 
 SOURCE RESUME:
 {resume_text}
@@ -157,8 +148,9 @@ async def build_cover_letter_with_llm(
     """Generate a targeted cover-letter draft using only supplied resume/profile facts."""
     if not resume_text.strip():
         return build_cover_letter(job, profile)
+    evidence = format_resume_evidence(resume_text)
     prompt = f"""
-Write a concise cover letter for this job using only facts present in the supplied profile and resume.
+Write a concise cover letter for this job using only facts present in the supplied profile, resume, and SOURCE-BACKED EVIDENCE.
 Do not invent employers, achievements, metrics, skills, credentials, dates, or experience.
 Never invent or change contact details.
 Keep it professional, specific to the role, ATS-friendly, and under 250 words.
@@ -173,6 +165,9 @@ Description:
 PROFILE:
 Name: {profile.name}
 Location: {profile.location}
+
+SOURCE-BACKED EVIDENCE:
+{evidence}
 
 RESUME:
 {resume_text}
