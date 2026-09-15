@@ -27,12 +27,9 @@ async def test_open_url_starts_supplied_browser_session_before_new_page(monkeypa
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
     session.new_page = AsyncMock(return_value=page)
-
     ensure_started = AsyncMock(return_value=session)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", ensure_started)
-
     result = await open_url("https://example.com", browser_session=session)
-
     ensure_started.assert_awaited_once_with(session)
     session.new_page.assert_awaited_once_with("https://example.com")
     assert result["url"] == "https://example.com"
@@ -47,9 +44,7 @@ async def test_open_url_uses_browser_use_private_target_identity(monkeypatch):
     page.get_title = AsyncMock(return_value="Example")
     session.new_page = AsyncMock(return_value=page)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
-
     result = await open_url("https://example.com", browser_session=session)
-
     assert result["target_id"] == "private-target"
 
 
@@ -62,45 +57,45 @@ async def test_open_url_falls_back_to_current_target_info(monkeypatch):
     session.new_page = AsyncMock(return_value=page)
     session.get_current_target_info = AsyncMock(return_value={"target_id": "fallback-target"})
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
-
     result = await open_url("https://example.com", browser_session=session)
-
     assert result["target_id"] == "fallback-target"
 
 
+def _write_test_resume(tmp_path: Path) -> Path:
+    resume = tmp_path / "resume.txt"
+    resume.write_text("Amit Kumar\namit@example.com\nPython developer", encoding="utf-8")
+    return resume
+
+
 def test_load_inputs_accepts_inline_description(tmp_path):
+    resume = _write_test_resume(tmp_path)
     args = type("Args", (), {
         "description": "Inline job description",
         "description_file": None,
-        "resume": str(tmp_path / "resume.docx"),
+        "resume": str(resume),
         "url": "https://example.com/job",
     })()
     result = _load_inputs(args)
-    assert result["description"] == "Inline job description"
+    assert result[0].description == "Inline job description"
 
 
 def test_load_inputs_still_accepts_description_file(tmp_path):
+    resume = _write_test_resume(tmp_path)
     description_file = tmp_path / "description.txt"
     description_file.write_text("File job description", encoding="utf-8")
     args = type("Args", (), {
         "description": str(description_file),
         "description_file": None,
-        "resume": str(tmp_path / "resume.docx"),
+        "resume": str(resume),
         "url": "https://example.com/job",
     })()
     result = _load_inputs(args)
-    assert result["description"] == "File job description"
+    assert result[0].description == "File job description"
 
 
 def test_application_task_contains_generated_cover_letter_and_resume_path():
-    plan = type("Plan", (), {
-        "job_description": "Python developer",
-        "cover_letter": "Dear Hiring Team",
-        "auto_submit": False,
-    })()
-
+    plan = type("Plan", (), {"job_description": "Python developer", "cover_letter": "Dear Hiring Team", "auto_submit": False})()
     task = build_application_task(plan, resume_path="C:\\Resume\\Amit.docx")
-
     assert "Resume file: C:\\Resume\\Amit.docx" in task
     assert "SUPPLIED GENERATED COVER LETTER" in task
     assert "Dear Hiring Team" in task
@@ -111,9 +106,7 @@ def test_primary_llm_uses_9router_when_key_is_configured(monkeypatch):
     monkeypatch.setenv("NINEROUTER_API_KEY", "test-router-key")
     monkeypatch.setenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1")
     monkeypatch.setenv("NINEROUTER_MODEL", "qwen-test")
-
     llm = _build_primary_llm("gemini-3.6-flash")
-
     assert isinstance(llm, ChatOpenAI)
     assert getattr(llm, "model_name", None) == "qwen-test"
     assert "localhost:20128/v1" in str(getattr(llm, "base_url", ""))
