@@ -9,6 +9,7 @@ from typing import Any
 from dotenv import load_dotenv
 from browser_use import Agent, ChatGoogle, ChatOpenAI
 
+from browser_agent.config import EnvVars, getenv
 from browser_agent.connection.harness import connect_browser_harness, stop_browser_harness_session
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
@@ -31,7 +32,7 @@ def _build_task(task: str, india_runtime: IndiaRuntimeConfig | None, interaction
 
 
 def _build_fallback_llm(fallback_model: str | None) -> Any | None:
-    model = (fallback_model or os.getenv("JOBPILOT_FALLBACK_MODEL", "")).strip()
+    model = (fallback_model or getenv(EnvVars.FALLBACK_MODEL, "JOBPILOT_FALLBACK_MODEL")).strip()
     if not model or not os.getenv("OPENAI_API_KEY", "").strip():
         return None
     return ChatOpenAI(model=model)
@@ -39,10 +40,10 @@ def _build_fallback_llm(fallback_model: str | None) -> Any | None:
 
 def _build_primary_llm(model: str) -> Any:
     """Build the primary LLM, optionally routing through the local 9Router gateway."""
-    router_key = os.getenv("NINEROUTER_API_KEY", "").strip()
+    router_key = getenv(EnvVars.ROUTER_API_KEY, "NINEROUTER_API_KEY")
     if router_key:
-        base_url = os.getenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1").strip()
-        router_model = os.getenv("NINEROUTER_MODEL", model).strip() or model
+        base_url = getenv(EnvVars.ROUTER_BASE_URL, "NINEROUTER_BASE_URL", default="http://localhost:20128/v1")
+        router_model = getenv(EnvVars.ROUTER_MODEL, "NINEROUTER_MODEL", default=model)
         return ChatOpenAI(base_url=base_url, model=router_model, api_key=router_key)
     return ChatGoogle(model=model)
 
@@ -115,15 +116,10 @@ async def run_on_tab(
                 logger.warning("Fallback agent succeeded on tab %s", selected.target_id)
             except Exception as fallback_error:
                 logger.error("Both primary and fallback agents failed", exc_info=True)
-                raise RuntimeError(
-                    f"Agent execution failed. Primary: {primary_error}. Fallback: {fallback_error}"
-                ) from fallback_error
+                raise RuntimeError(f"Agent execution failed. Primary: {primary_error}. Fallback: {fallback_error}") from fallback_error
 
-        try:
-            final_tab = await manager.verify_tab(selected)
-            logger.info("Task completed and verified on tab %s (%s)", final_tab.target_id, final_tab.url)
-        except TabNotFoundError as exc:
-            raise TabNotFoundError(f"Target tab disappeared during agent execution: {selected.target_id}") from exc
+        final_tab = await manager.verify_tab(selected)
+        logger.info("Task completed and verified on tab %s (%s)", final_tab.target_id, final_tab.url)
         return history
     finally:
         if owns_session:
