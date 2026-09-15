@@ -18,6 +18,8 @@ async def _await_if_needed(value: Any) -> Any:
 
 async def _ensure_session_started(session: Any) -> Any:
     """Start a Browser Use session before using CDP-backed page operations."""
+    if getattr(session, "cdp_client", None) is not None:
+        return session
     start = getattr(session, "start", None)
     if callable(start):
         await _await_if_needed(start())
@@ -31,21 +33,16 @@ async def open_url(url: str, browser_session: Any | None = None) -> dict[str, st
     session = await _ensure_session_started(browser_session or connect_browser_harness())
     page = await _await_if_needed(cast(Any, session).new_page(url.strip()))
 
-    # Browser Use's actor Page intentionally keeps the target identity private
-    # (`_target_id`). Older/newer wrappers may expose `target_id` publicly, so
-    # prefer the public attribute and fall back to the stable actor identity.
     target_id = str(getattr(page, "target_id", "") or getattr(page, "_target_id", ""))
     if not target_id:
-        # As a final compatibility fallback, ask the session for its current
-        # target information. This avoids inventing an identifier.
         get_current_target_info = getattr(session, "get_current_target_info", None)
         if callable(get_current_target_info):
             info = await _await_if_needed(get_current_target_info())
             if isinstance(info, dict):
-                target_id = str(info.get("targetId", "") or info.get("target_id", ""))
+                target_id = str(info.get("targetId", "") or info.get("target_id", "") or info.get("id", ""))
 
     return {
-        "target_id": target_id,
+        "target_id": target_id.strip(),
         "title": str(await _await_if_needed(cast(Any, page).get_title()) or ""),
         "url": str(await _await_if_needed(cast(Any, page).get_url()) or ""),
     }
