@@ -67,15 +67,24 @@ def _write_test_resume(tmp_path: Path) -> Path:
     return resume
 
 
-def test_load_inputs_accepts_inline_description(tmp_path):
-    resume = _write_test_resume(tmp_path)
-    args = type("Args", (), {
+def _load_test_args(resume: Path, **overrides):
+    values = {
         "description": "Inline job description",
         "description_file": None,
         "resume": str(resume),
         "url": "https://example.com/job",
-    })()
-    result = _load_inputs(args)
+        "profile": "",
+        "memory": "",
+        "title": "Python Developer",
+        "company": "Example Corp",
+    }
+    values.update(overrides)
+    return type("Args", (), values)()
+
+
+def test_load_inputs_accepts_inline_description(tmp_path):
+    resume = _write_test_resume(tmp_path)
+    result = _load_inputs(_load_test_args(resume))
     assert result[0].description == "Inline job description"
 
 
@@ -83,13 +92,7 @@ def test_load_inputs_still_accepts_description_file(tmp_path):
     resume = _write_test_resume(tmp_path)
     description_file = tmp_path / "description.txt"
     description_file.write_text("File job description", encoding="utf-8")
-    args = type("Args", (), {
-        "description": str(description_file),
-        "description_file": None,
-        "resume": str(resume),
-        "url": "https://example.com/job",
-    })()
-    result = _load_inputs(args)
+    result = _load_inputs(_load_test_args(resume, description=str(description_file)))
     assert result[0].description == "File job description"
 
 
