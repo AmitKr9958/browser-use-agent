@@ -34,6 +34,15 @@ class LearnedAnswer:
     confidence: str = "explicit"
 
 
+def default_memory_path() -> Path:
+    """Return a private, user-scoped memory path outside the source repository."""
+    if os.name == "nt":
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+    return root / "JobPilot" / "memory.json"
+
+
 def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
