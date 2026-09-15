@@ -9,9 +9,10 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from .application import build_application_report_from_result
+from .audit import parse_structured_result
 from .documents import write_resume_docx
 from .job_source import get_job_posting_xlsx
-from .memory import learned_answers, merge_profile
+from .memory import learned_answers, merge_profile, remember_correction
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot, extract_job_description_from_url
@@ -75,6 +76,28 @@ def _apply_memory(plan, memory_path: str):
     for question, answer in learned_answers(memory_path).items():
         answers.setdefault(question, answer)
     return replace(plan, answers=answers)
+
+
+def _persist_explicit_corrections(raw_result: str, memory_path: str) -> int:
+    """Learn only corrections explicitly attributed to the user by the browser audit."""
+    if not memory_path:
+        return 0
+    data = parse_structured_result(raw_result)
+    if not data:
+        return 0
+    corrections = data.get("corrections", [])
+    if not isinstance(corrections, list):
+        return 0
+    persisted = 0
+    for item in corrections:
+        if not isinstance(item, dict) or item.get("source") != "user" or item.get("explicit") is not True:
+            continue
+        field = str(item.get("field", "")).strip()
+        before = str(item.get("before_value", "")).strip()
+        after = str(item.get("after_value", "")).strip()
+        if remember_correction(memory_path, field=field, before_value=before, after_value=after, reason=str(item.get("reason", ""))):
+            persisted += 1
+    return persisted
 
 
 def _write_artifacts(plan, output_dir: str) -> dict[str, str]:
@@ -145,10 +168,8 @@ async def _run_workbook(args: argparse.Namespace) -> int:
         result = await pilot.apply_to_url(plan, resume_path=args.resume)
         final_result = getattr(result, "final_result", None)
         raw_result = str(final_result()) if callable(final_result) else str(result)
-        report = build_application_report_from_result(
-            target_url=application_url,
-            raw_result=raw_result,
-        )
+        report = build_application_report_from_result(target_url=application_url, raw_result=raw_result)
+        learned = _persist_explicit_corrections(raw_result, args.memory)
         output["application"] = {
             "status": report.status,
             "filled_fields": report.filled_fields,
@@ -157,6 +178,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
             "submitted": report.submitted,
             "result": report.raw_result,
             "metadata": report.metadata,
+            "learned_corrections": learned,
         }
         print(json.dumps(output, indent=2))
         return 0 if report.status in {"completed", "blocked"} else 1
@@ -174,12 +196,12 @@ async def _run(args: argparse.Namespace) -> int:
         plan = _apply_memory(plan, args.memory)
         print(json.dumps(_plan_output(plan, _write_artifacts(plan, args.output_dir)), indent=2))
         return 0
-    plan = pilot.prepare_plan(job, resume_text, profile)
-    plan = _apply_memory(plan, args.memory)
+    plan = _apply_memory(pilot.prepare_plan(job, resume_text, profile), args.memory)
     result = await pilot.apply_to_url(plan, resume_path=args.resume)
     final_result = getattr(result, "final_result", None)
     output = str(final_result()) if callable(final_result) else str(result)
     report = build_application_report_from_result(target_url=job.url, raw_result=output)
+    learned = _persist_explicit_corrections(output, args.memory)
     print(
         json.dumps(
             {
@@ -191,6 +213,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "submitted": report.submitted,
                 "result": report.raw_result,
                 "metadata": report.metadata,
+                "learned_corrections": learned,
             },
             indent=2,
         )
