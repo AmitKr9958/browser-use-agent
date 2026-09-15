@@ -34,6 +34,7 @@ def build_application_task(plan: ApplicationPlan, *, resume_path: str) -> str:
     profile = plan.profile
     supplied = {"name": profile.name, "email": profile.email, "phone": profile.phone, "location": profile.location, "linkedin": profile.linkedin, "portfolio": profile.portfolio, "work_authorization": profile.work_authorization, "sponsorship": profile.sponsorship}
     contact_lines = "\n".join(f"- {key}: {value or '[NOT SUPPLIED — leave blank]'}" for key, value in supplied.items())
+    cover_letter = plan.cover_letter.strip() or "[NOT SUPPLIED — leave blank]"
     return f"""
 You are JobPilot, a production-grade job-application assistant.
 
@@ -47,7 +48,7 @@ OBJECTIVE
 3. Use accessible names, visible labels, placeholders, surrounding question text and actual control state. Never depend on vendor element IDs, class names, field order, or brittle selectors.
 4. Handle native inputs, custom comboboxes, autocomplete fields, radio groups, checkboxes, date controls, rich-text editors, and file-upload controls using real user-like interaction. Verify the resulting value/state after each interaction.
 5. Upload the supplied resume when a resume/CV upload control exists. Verify the selected filename or attached-file state.
-6. If a cover-letter/motivation field exists, fill it only with the supplied generated cover letter and verify the resulting text/state.
+6. If a cover-letter/motivation field exists, fill it only with the supplied generated cover letter below and verify the resulting text/state.
 7. For multi-step application wizards, safely use Next, Continue, Save, or Save and Continue only when the control is clearly non-final. Re-scan the newly rendered page after every transition.
 8. Automatically answer ordinary career-site questions only when the questionnaire policy below establishes an explicit evidence-backed answer.
 9. For legal, sponsorship, salary, demographic, identity, compensation, consent, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
@@ -59,6 +60,9 @@ SUPPLIED PROFILE
 
 ADDITIONAL ANSWERS
 {answers}
+
+SUPPLIED GENERATED COVER LETTER
+{cover_letter}
 
 RESUME/ATS CONTEXT
 Matched keywords: {', '.join(plan.match.matched_keywords) or 'none'}
@@ -170,13 +174,14 @@ async def extract_job_description_from_url(url: str, *, model: str = "gemini-3.6
 class JobPilot:
     """High-level JobPilot workflow using the existing Browser Use/Harness stack."""
 
-    def __init__(self, *, model: str = "gemini-3.6-flash", max_steps: int = 80) -> None:
+    def __init__(self, *, model: str = "gemini-3.6-flash", max_steps: int = 80, fallback_model: str | None = None) -> None:
         if not model.strip():
             raise ValueError("model must not be empty")
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
         self.model = model
         self.max_steps = max_steps
+        self.fallback_model = fallback_model
 
     def prepare_plan(self, job: JobDescription, resume_text: str, profile: ContactProfile, *, answers: dict[str, str] | None = None) -> ApplicationPlan:
         match = score_job_match(job.description, resume_text)
@@ -211,7 +216,7 @@ class JobPilot:
 
     async def apply_to_open_page(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         self._validate_resume_path(resume_path)
-        return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(index=0), model=self.model, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
+        return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(index=0), model=self.model, max_steps=self.max_steps, fallback_model=self.fallback_model, available_file_paths=[str(Path(resume_path).expanduser())], india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
 
     async def apply_to_url(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         _validate_web_url(plan.job.url, field_name="job application URL")
@@ -222,6 +227,6 @@ class JobPilot:
             target_id = opened.get("target_id", "").strip()
             if not target_id:
                 raise RuntimeError("Browser did not return a target id for the application page")
-            return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(target_id=target_id), model=self.model, browser_session=session, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
+            return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(target_id=target_id), model=self.model, browser_session=session, max_steps=self.max_steps, fallback_model=self.fallback_model, available_file_paths=[str(Path(resume_path).expanduser())], india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
         finally:
             await stop_browser_harness_session(session)
