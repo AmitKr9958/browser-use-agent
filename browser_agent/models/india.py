@@ -20,10 +20,10 @@ class IndiaRuntimeConfig:
     def from_environment(cls) -> "IndiaRuntimeConfig":
         """Load safe regional overrides from canonical environment variables."""
         return cls(
-            locale=getenv(EnvVars.LOCALE, default=cls.locale),
-            timezone=getenv(EnvVars.TIMEZONE, default=cls.timezone),
-            currency=getenv(EnvVars.CURRENCY, default=cls.currency),
-            country_code=getenv(EnvVars.COUNTRY, default=cls.country_code),
+            locale=getenv(EnvVars.LOCALE, default="en-IN"),
+            timezone=getenv(EnvVars.TIMEZONE, default="Asia/Kolkata"),
+            currency=getenv(EnvVars.CURRENCY, default="INR"),
+            country_code=getenv(EnvVars.COUNTRY, default="IN"),
         )
 
     def instruction(self) -> str:
