@@ -9,6 +9,7 @@ from .documents import (
     tailor_resume_with_llm,
     write_resume_docx,
 )
+from .memory import learned_answers, load_memory, merge_profile, remember_user_value
 from .models import ApplicationPlan, ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot, build_application_task
@@ -25,7 +26,11 @@ __all__ = [
     "build_cover_letter_with_llm",
     "extract_resume_text",
     "infer_contact_profile",
+    "learned_answers",
     "load_contact_profile",
+    "load_memory",
+    "merge_profile",
+    "remember_user_value",
     "score_job_match",
     "tailor_resume_text",
     "tailor_resume_with_llm",
