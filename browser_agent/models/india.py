@@ -1,13 +1,10 @@
-"""Indian-market runtime defaults for Browser Agent tasks.
-
-These settings are intentionally application-level: Browser Harness owns the Chrome
-profile, so we do not mutate an existing user's browser locale or timezone.
-"""
+"""Indian-market runtime defaults for Browser Agent tasks."""
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+
+from browser_agent.config import EnvVars, getenv
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,16 +18,15 @@ class IndiaRuntimeConfig:
 
     @classmethod
     def from_environment(cls) -> "IndiaRuntimeConfig":
-        """Load safe regional overrides from environment variables."""
+        """Load safe regional overrides from canonical environment variables."""
         return cls(
-            locale=os.getenv("BROWSER_AGENT_LOCALE", cls.locale),
-            timezone=os.getenv("BROWSER_AGENT_TIMEZONE", cls.timezone),
-            currency=os.getenv("BROWSER_AGENT_CURRENCY", cls.currency),
-            country_code=os.getenv("BROWSER_AGENT_COUNTRY", cls.country_code),
+            locale=getenv(EnvVars.LOCALE, default=cls.locale),
+            timezone=getenv(EnvVars.TIMEZONE, default=cls.timezone),
+            currency=getenv(EnvVars.CURRENCY, default=cls.currency),
+            country_code=getenv(EnvVars.COUNTRY, default=cls.country_code),
         )
 
     def instruction(self) -> str:
-        """Return concise regional guidance suitable for an agent task."""
         return (
             "Use Indian regional conventions where the website asks for them: "
             f"country={self.country_code}, locale={self.locale}, timezone={self.timezone}, "
@@ -39,4 +35,4 @@ class IndiaRuntimeConfig:
         )
 
 
-DEFAULT_INDIA_RUNTIME = IndiaRuntimeConfig()
+DEFAULT_INDIA_RUNTIME = IndiaRuntimeConfig.from_environment()
