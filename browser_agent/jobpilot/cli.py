@@ -12,7 +12,7 @@ from .application import build_application_report_from_result
 from .audit import parse_structured_result
 from .documents import write_resume_docx
 from .job_source import get_job_posting_xlsx
-from .memory import learned_answers, merge_profile, remember_correction
+from .memory import default_memory_path, learned_answers, merge_profile, remember_correction
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot, extract_job_description_from_url
@@ -21,6 +21,7 @@ from .workflow import JobPilot, extract_job_description_from_url
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="JobPilot: ATS analysis and controlled browser autofill")
     sub = parser.add_subparsers(dest="command", required=True)
+    memory_default = str(default_memory_path())
 
     prepare = sub.add_parser("prepare", help="Analyze a job and prepare application artifacts")
     prepare.add_argument("--title", required=True)
@@ -29,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--url", default="")
     prepare.add_argument("--resume", required=True)
     prepare.add_argument("--profile", default="")
-    prepare.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
+    prepare.add_argument("--memory", default=memory_default, help="Persistent JobPilot memory JSON")
     prepare.add_argument("--model", default="gemini-3.6-flash")
     prepare.add_argument("--max-steps", type=int, default=80)
     prepare.add_argument("--output-dir", default="")
@@ -40,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     workbook.add_argument("--row", required=True, type=int)
     workbook.add_argument("--resume", required=True)
     workbook.add_argument("--profile", default="")
-    workbook.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
+    workbook.add_argument("--memory", default=memory_default, help="Persistent JobPilot memory JSON")
     workbook.add_argument("--model", default="gemini-3.6-flash")
     workbook.add_argument("--max-steps", type=int, default=80)
     workbook.add_argument("--output-dir", default="")
@@ -54,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--url", required=True)
     apply.add_argument("--resume", required=True)
     apply.add_argument("--profile", default="")
-    apply.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
+    apply.add_argument("--memory", default=memory_default, help="Persistent JobPilot memory JSON")
     apply.add_argument("--model", default="gemini-3.6-flash")
     apply.add_argument("--max-steps", type=int, default=80)
     return parser
