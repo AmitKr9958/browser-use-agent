@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -19,6 +20,8 @@ from .documents import build_cover_letter, build_cover_letter_with_llm, tailor_r
 from .form_compat import build_universal_form_policy
 from .models import ApplicationPlan, ContactProfile, JobDescription
 from .questionnaire import build_questionnaire_policy
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_web_url(url: str, *, field_name: str) -> None:
@@ -198,11 +201,13 @@ class JobPilot:
         if use_llm:
             try:
                 tailored = await tailor_resume_with_llm(resume_text, job.description, model=self.model)
-            except Exception:
+            except Exception as exc:
+                logger.warning("LLM resume tailoring failed; using deterministic resume tailoring: %s", exc, exc_info=True)
                 tailored = tailor_resume_text(resume_text, match.missing_keywords)
             try:
                 cover_letter = await build_cover_letter_with_llm(job, profile, resume_text, model=self.model)
-            except Exception:
+            except Exception as exc:
+                logger.warning("LLM cover-letter generation failed; using deterministic cover letter: %s", exc, exc_info=True)
                 cover_letter = build_cover_letter(job, profile, resume_text=resume_text)
         plan = ApplicationPlan(job=job, profile=profile, match=match, tailored_resume_text=tailored, cover_letter=cover_letter, answers=dict(answers or {}), auto_submit=False)
         plan.validate()
