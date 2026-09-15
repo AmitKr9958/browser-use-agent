@@ -17,11 +17,11 @@ async def test_open_url_starts_supplied_browser_session_before_new_page(monkeypa
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    session.new_page = AsyncMock(return_value=page)
     session._target_id = "target-123"
 
     ensure_started = AsyncMock(return_value=session)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", ensure_started)
+    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
 
     result = await open_url("https://example.com", browser_session=session)
 
@@ -38,7 +38,7 @@ async def test_open_url_uses_browser_use_private_target_identity(monkeypatch):
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    session.new_page = AsyncMock(return_value=page)
+    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
 
     result = await open_url("https://example.com", browser_session=session)
@@ -52,9 +52,14 @@ async def test_open_url_falls_back_to_current_target_info(monkeypatch):
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    session.new_page = AsyncMock(return_value=page)
+    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
     session._target_id = None
-    session.get_current_target_info = AsyncMock(return_value={"target_id": "fallback-target"})
+    monkeypatch.setattr(
+        session,
+        "get_current_target_info",
+        AsyncMock(return_value={"target_id": "fallback-target"}),
+        raising=False,
+    )
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
 
     result = await open_url("https://example.com", browser_session=session)
