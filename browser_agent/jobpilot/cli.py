@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare = sub.add_parser("prepare", help="Analyze a job and prepare application artifacts")
     prepare.add_argument("--title", required=True)
     prepare.add_argument("--company", required=True)
-    prepare.add_argument("--description", required=True)
+    prepare.add_argument("--description", required=True, help="Job description text or path to a UTF-8 text file")
     prepare.add_argument("--url", default="")
     prepare.add_argument("--resume", required=True)
     prepare.add_argument("--profile", default="")
@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply = sub.add_parser("apply", help="Open an application URL and safely autofill it")
     apply.add_argument("--title", required=True)
     apply.add_argument("--company", required=True)
-    apply.add_argument("--description", required=True)
+    apply.add_argument("--description", required=True, help="Job description text or path to a UTF-8 text file")
     apply.add_argument("--url", required=True)
     apply.add_argument("--resume", required=True)
     apply.add_argument("--profile", default="")
@@ -62,7 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, ContactProfile]:
-    description = Path(args.description).expanduser().read_text(encoding="utf-8").strip()
+    description_arg = str(args.description).strip()
+    description_path = Path(description_arg).expanduser()
+    if description_path.is_file():
+        description = description_path.read_text(encoding="utf-8").strip()
+    else:
+        description = description_arg
+    if not description:
+        raise ValueError("job description must not be empty")
     resume_text = extract_resume_text(args.resume)
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
     profile = merge_profile(profile, args.memory)
