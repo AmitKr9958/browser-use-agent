@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--resume", required=True)
     prepare.add_argument("--profile", default="")
     prepare.add_argument("--model", default="gemini-3.6-flash")
+    prepare.add_argument("--max-steps", type=int, default=80)
     prepare.add_argument("--output-dir", default="")
     prepare.add_argument("--no-llm", action="store_true")
 
