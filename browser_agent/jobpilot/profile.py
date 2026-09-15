@@ -16,22 +16,40 @@ _EMAIL = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-]
 _PHONE = re.compile(r"(?<!\d)(?:\+?\d[\d ()-]{8,}\d)(?!\d)")
 
 
+def _append_nonempty(chunks: list[str], value: str) -> None:
+    value = value.strip()
+    if value and value not in chunks:
+        chunks.append(value)
+
+
 def extract_resume_text(path: str | Path) -> str:
-    """Extract text from a PDF, DOCX, or plain-text resume, including DOCX tables."""
+    """Extract resume text with layout-independent evidence from common formats."""
     source = Path(path).expanduser()
     if not source.is_file():
         raise FileNotFoundError(f"resume not found: {source}")
     suffix = source.suffix.lower()
     if suffix == ".pdf":
-        return "\n".join(page.extract_text() or "" for page in PdfReader(str(source)).pages).strip()
+        chunks: list[str] = []
+        reader = PdfReader(str(source))
+        for page in reader.pages:
+            _append_nonempty(chunks, page.extract_text() or "")
+        return "\n".join(chunks).strip()
     if suffix == ".docx":
         document = Document(str(source))
-        chunks = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+        chunks = []
+        for section in document.sections:
+            for paragraph in section.header.paragraphs:
+                _append_nonempty(chunks, paragraph.text)
+        for paragraph in document.paragraphs:
+            _append_nonempty(chunks, paragraph.text)
         for table in document.tables:
             for row in table.rows:
                 cells = [cell.text.strip() for cell in row.cells]
                 if any(cells):
-                    chunks.append(" | ".join(cells))
+                    _append_nonempty(chunks, " | ".join(cells))
+        for section in document.sections:
+            for paragraph in section.footer.paragraphs:
+                _append_nonempty(chunks, paragraph.text)
         return "\n".join(chunks).strip()
     if suffix in {".txt", ".md"}:
         return source.read_text(encoding="utf-8").strip()
