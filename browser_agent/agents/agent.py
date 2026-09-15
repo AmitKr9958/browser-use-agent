@@ -9,8 +9,7 @@ from typing import Any
 from dotenv import load_dotenv
 from browser_use import Agent, ChatGoogle, ChatOpenAI
 
-from browser_agent.connection.session_manager import BrowserSessionManager
-from browser_agent.connection.harness import connect_browser_harness
+from browser_agent.connection.harness import connect_browser_harness, stop_browser_harness_session
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
@@ -18,16 +17,10 @@ from browser_agent.tabs.models import TabRecord, TabSelector
 from browser_agent.utils import await_if_needed
 
 logger = logging.getLogger(__name__)
-
 load_dotenv()
 
 
-def _build_task(
-    task: str,
-    india_runtime: IndiaRuntimeConfig | None,
-    interaction_policy: SensitiveInteractionPolicy | None,
-) -> str:
-    """Build the model instruction without altering the caller's task semantics."""
+def _build_task(task: str, india_runtime: IndiaRuntimeConfig | None, interaction_policy: SensitiveInteractionPolicy | None) -> str:
     sections: list[str] = []
     if india_runtime is not None:
         sections.append(india_runtime.instruction())
@@ -38,7 +31,6 @@ def _build_task(
 
 
 def _build_fallback_llm(fallback_model: str | None) -> Any | None:
-    """Build an optional OpenAI fallback when explicitly configured and authenticated."""
     model = (fallback_model or os.getenv("JOBPILOT_FALLBACK_MODEL", "")).strip()
     if not model or not os.getenv("OPENAI_API_KEY", "").strip():
         return None
@@ -56,7 +48,6 @@ def _build_primary_llm(model: str) -> Any:
 
 
 async def _run_agent(agent_kwargs: dict[str, Any], max_steps: int) -> Any:
-    """Run one Browser Use attempt and return its history."""
     agent = Agent(**agent_kwargs)
     return await await_if_needed(agent.run(max_steps=max_steps))
 
@@ -89,7 +80,6 @@ async def run_on_tab(
     owns_session = browser_session is None
     session = browser_session or connect_browser_harness()
     manager = TabManager(session)
-
     try:
         selected: TabRecord = await manager.select_tab(selector)
         effective_task = _build_task(task, india_runtime, interaction_policy)
@@ -116,12 +106,7 @@ async def run_on_tab(
             if fallback_llm is None:
                 logger.error("Agent failed and no fallback LLM is configured", exc_info=True)
                 raise
-            logger.warning(
-                "Primary LLM/agent attempt failed on tab %s; retrying with fallback: %s",
-                selected.target_id,
-                primary_error,
-                exc_info=True,
-            )
+            logger.warning("Primary agent failed on tab %s; retrying with fallback: %s", selected.target_id, primary_error, exc_info=True)
             fallback_kwargs = dict(base_kwargs)
             fallback_kwargs["llm"] = fallback_llm
             fallback_kwargs.pop("fallback_llm", None)
@@ -138,11 +123,11 @@ async def run_on_tab(
             final_tab = await manager.verify_tab(selected)
             logger.info("Task completed and verified on tab %s (%s)", final_tab.target_id, final_tab.url)
         except TabNotFoundError as exc:
-            raise TabNotFoundError(
-                f"Target tab disappeared during agent execution: {selected.target_id}"
-            ) from exc
+            raise TabNotFoundError(f"Target tab disappeared during agent execution: {selected.target_id}") from exc
         return history
     finally:
         if owns_session:
-            async with BrowserSessionManager(session):
-                pass
+            try:
+                await stop_browser_harness_session(session)
+            except Exception as exc:
+                logger.warning("Error stopping owned browser session: %s", exc, exc_info=True)
