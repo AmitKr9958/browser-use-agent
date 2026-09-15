@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from .application import build_application_report_from_result
@@ -100,6 +100,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
     pilot = JobPilot(model=args.model, max_steps=args.max_steps)
     job = posting.job
+    application_url = posting.application_url or posting.job.url
     extraction = {"attempted": False, "verified": False}
     if args.apply:
         extraction["attempted"] = True
@@ -108,6 +109,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
             model=args.model,
             max_steps=min(args.max_steps, 40),
         )
+        job = replace(job, url=application_url)
         extraction["verified"] = True
     plan = await pilot.prepare_plan_async(job, resume_text, profile, use_llm=not args.no_llm)
     output = {
@@ -116,6 +118,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
             "row": posting.row_number,
             "workbook_match_score": posting.match_score,
             "job_url": posting.job.url,
+            "application_url": application_url,
         },
         "job": asdict(job),
         "job_extraction": extraction,
@@ -126,7 +129,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
         final_result = getattr(result, "final_result", None)
         raw_result = str(final_result()) if callable(final_result) else str(result)
         report = build_application_report_from_result(
-            target_url=posting.job.url,
+            target_url=application_url,
             raw_result=raw_result,
         )
         output["application"] = {
