@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import os
 from typing import Any, cast
 
-from browser_use import Agent, ChatGoogle
+from browser_use import Agent, ChatGoogle, ChatOpenAI
 
 from browser_agent.connection.harness import connect_browser_harness
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
@@ -43,6 +44,14 @@ def _build_task(
     return "\n\n".join(sections)
 
 
+def _build_fallback_llm(fallback_model: str | None) -> Any | None:
+    """Build an optional OpenAI fallback when explicitly configured and authenticated."""
+    model = (fallback_model or os.getenv("JOBPILOT_FALLBACK_MODEL", "")).strip()
+    if not model or not os.getenv("OPENAI_API_KEY"):
+        return None
+    return ChatOpenAI(model=model)
+
+
 async def run_on_tab(
     task: str,
     selector: TabSelector,
@@ -52,6 +61,9 @@ async def run_on_tab(
     max_steps: int = 100,
     llm_timeout: int | None = None,
     step_timeout: int | None = None,
+    fallback_model: str | None = None,
+    available_file_paths: list[str] | None = None,
+    use_judge: bool = False,
     india_runtime: IndiaRuntimeConfig | None = DEFAULT_INDIA_RUNTIME,
     interaction_policy: SensitiveInteractionPolicy | None = DEFAULT_SENSITIVE_POLICY,
 ) -> Any:
@@ -59,6 +71,10 @@ async def run_on_tab(
 
     Indian regional conventions and conservative sensitive-interaction boundaries are
     enabled by default. Pass either option as ``None`` to disable that guidance.
+
+    ``available_file_paths`` explicitly grants Browser Use access to local files that
+    the task is allowed to upload. ``fallback_model`` enables an OpenAI fallback only
+    when an ``OPENAI_API_KEY`` is present, avoiding an unnecessary credential failure.
     """
     if not task.strip():
         raise ValueError("task must not be empty")
@@ -79,7 +95,13 @@ async def run_on_tab(
         "task": effective_task,
         "llm": ChatGoogle(model=model),
         "browser_session": session,
+        "use_judge": use_judge,
     }
+    fallback_llm = _build_fallback_llm(fallback_model)
+    if fallback_llm is not None:
+        agent_kwargs["fallback_llm"] = fallback_llm
+    if available_file_paths:
+        agent_kwargs["available_file_paths"] = [str(path) for path in available_file_paths]
     if llm_timeout is not None:
         agent_kwargs["llm_timeout"] = llm_timeout
     if step_timeout is not None:
