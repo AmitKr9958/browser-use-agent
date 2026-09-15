@@ -33,7 +33,7 @@ aws = ["boto3==1.42.37"]
 oci = ["oci==2.166.0"]
 video = ["imageio[ffmpeg]==2.37.2", "numpy==2.4.1"]
 examples = ["agentmail==0.0.59", "botocore==1.42.37", "imgcat==0.6.0", "langchain-openai==1.1.14"]
-eval = ["lmnr[all]==0.7.42", "anyio==4.12.1", "psutil==7.2.2", "datamodel-code-generator==0.75.1"]
+eval = ["lmnr[all]==0.7.42", "anyio==4.12.1", "psutil==2.7.2", "datamodel-code-generator==0.75.1"]
 cli-oci = ["browser-use[cli,oci]"]
 all = ["browser-use[cli,examples,aws,oci]"]
 
@@ -52,7 +52,7 @@ bu = "browser_use.cli:main"
 browser = "browser_use.cli:main"
 browser-use-tui = "browser_use.cli:browser_use_tui_main"
 browser-agent = "browser_agent.cli:main"
-jobpilot = "browser_agent.jobpilot.cli_compat:main"
+jobpilot = "browser_agent.jobpilot.cli:main"
 
 [build-system]
 requires = ["hatchling==1.32.0"]
