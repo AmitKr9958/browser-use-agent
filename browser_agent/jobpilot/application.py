@@ -139,6 +139,14 @@ def build_application_report_from_result(*, target_url: str, raw_result: str) ->
 
     structured = parse_structured_result(text)
     if structured is not None:
+        if structured.get("submitted") is True:
+            return build_application_report(
+                status="failed",
+                target_url=target_url,
+                blockers=("structured browser result claims submitted=true; manual review required",),
+                raw_result=text,
+                metadata={"submission_signal": True, "verification_signal": False},
+            )
         fields = parse_field_audits(structured)
         metadata = audit_metadata(structured, fields)
         verified_fields = tuple(field.label for field in fields if field.verified)
