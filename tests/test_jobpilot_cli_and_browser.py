@@ -18,10 +18,21 @@ class _FakePage:
         return "https://example.com/apply"
 
 
+class _PrivateTargetPage:
+    _target_id = "target-private-1"
+
+    async def get_title(self):
+        return "Example"
+
+    async def get_url(self):
+        return "https://example.com/apply"
+
+
 class _FakeSession:
-    def __init__(self):
+    def __init__(self, page=None):
         self.started = False
         self.new_page_calls = 0
+        self.page = page or _FakePage()
 
     async def start(self):
         self.started = True
@@ -30,7 +41,7 @@ class _FakeSession:
         self.new_page_calls += 1
         assert self.started is True
         assert url == "https://example.com/apply"
-        return _FakePage()
+        return self.page
 
 
 @pytest.mark.asyncio
@@ -46,6 +57,38 @@ async def test_open_url_starts_supplied_browser_session_before_new_page():
         "title": "Example",
         "url": "https://example.com/apply",
     }
+
+
+@pytest.mark.asyncio
+async def test_open_url_uses_browser_use_private_target_identity():
+    session = _FakeSession(page=_PrivateTargetPage())
+
+    result = await open_url("https://example.com/apply", browser_session=session)
+
+    assert result["target_id"] == "target-private-1"
+
+
+@pytest.mark.asyncio
+async def test_open_url_falls_back_to_current_target_info():
+    class _NoTargetPage:
+        async def get_title(self):
+            return "Example"
+
+        async def get_url(self):
+            return "https://example.com/apply"
+
+    class _CurrentTargetSession(_FakeSession):
+        def __init__(self):
+            super().__init__(page=_NoTargetPage())
+
+        async def get_current_target_info(self):
+            return {"targetId": "target-current-1"}
+
+    session = _CurrentTargetSession()
+
+    result = await open_url("https://example.com/apply", browser_session=session)
+
+    assert result["target_id"] == "target-current-1"
 
 
 def test_load_inputs_accepts_inline_description(tmp_path):
