@@ -9,10 +9,20 @@ def _write_workbook(path) -> None:
     workbook = Workbook()
     sheet = workbook.active
     sheet.append([
-        "Company Name", "Job Title", "Location", "Job Posting URL", "Date Found", "Match Score", "Key Matching Skills", "Job Posting Date"
+        "Company Name", "Job Title", "Location", "Job Posting URL", "Application URL", "Date Found", "Match Score", "Key Matching Skills", "Job Posting Date"
     ])
-    sheet.append(["Weekday AI", "Power BI Lead", "Remote - India", "https://apply.workable.com/weekday-1/j/546035180F", "2026-09-14", 0.93, "Power BI, DAX, SQL", "2026-09-14"])
-    sheet.append(["", "", "", "", "", "", "", ""])
+    sheet.append([
+        "Weekday AI",
+        "Power BI Lead",
+        "Remote - India",
+        "https://jobs.example.com/weekday-1/j/546035180F",
+        "https://apply.example.com/weekday-1/546035180F",
+        "2026-09-14",
+        0.93,
+        "Power BI, DAX, SQL",
+        "2026-09-14",
+    ])
+    sheet.append(["", "", "", "", "", "", "", "", ""])
     workbook.save(path)
 
 
@@ -27,6 +37,7 @@ def test_load_job_postings_xlsx_normalizes_supported_columns(tmp_path) -> None:
     assert posting.job.title == "Power BI Lead"
     assert posting.job.location == "Remote - India"
     assert posting.job.url.endswith("546035180F")
+    assert posting.application_url == "https://apply.example.com/weekday-1/546035180F"
     assert posting.job.description == "Power BI, DAX, SQL"
     assert posting.match_score == 0.93
 
@@ -36,6 +47,7 @@ def test_get_job_posting_xlsx_requires_excel_data_row(tmp_path) -> None:
     _write_workbook(path)
     posting = get_job_posting_xlsx(path, 2)
     assert posting.job.title == "Power BI Lead"
+    assert posting.application_url.startswith("https://apply.example.com/")
 
 
 def test_load_job_postings_xlsx_rejects_missing_required_header(tmp_path) -> None:
