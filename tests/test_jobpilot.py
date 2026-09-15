@@ -3,7 +3,12 @@
 import pytest
 
 from browser_agent.jobpilot.ats import score_job_match
-from browser_agent.jobpilot.documents import build_cover_letter, tailor_resume_text, write_resume_docx
+from browser_agent.jobpilot.documents import (
+    build_cover_letter,
+    tailor_resume_text,
+    validate_generated_resume,
+    write_resume_docx,
+)
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
 from browser_agent.jobpilot.profile import infer_contact_profile
 from browser_agent.jobpilot.workflow import JobPilot, build_application_task
@@ -37,6 +42,18 @@ def test_tailor_rejects_negative_addition_limit() -> None:
 
 def test_tailor_zero_additions_returns_clean_source() -> None:
     assert tailor_resume_text("Python developer", ("Kubernetes",), max_additions=0) == "Python developer"
+
+
+def test_generated_resume_rejects_new_contact_identifiers() -> None:
+    source = "Amit Kumar\namit@example.com\n+91 98765 43210\nhttps://linkedin.com/in/amit"
+    unsafe = "Amit Kumar\nother@example.com\n+91 98765 43210\nhttps://linkedin.com/in/amit"
+    assert validate_generated_resume(source, unsafe) == source
+
+
+def test_generated_resume_accepts_rewrite_with_existing_identifiers() -> None:
+    source = "Amit Kumar\namit@example.com\n+91 98765 43210"
+    generated = "Amit Kumar\nExperienced Python developer.\namit@example.com\n+91 98765 43210"
+    assert validate_generated_resume(source, generated) == generated
 
 
 def test_cover_letter_uses_supplied_identity_only() -> None:
