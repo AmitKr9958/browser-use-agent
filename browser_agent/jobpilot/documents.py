@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from browser_use import ChatGoogle
@@ -9,6 +10,10 @@ from browser_use.llm.messages import UserMessage
 from docx import Document
 
 from .models import ContactProfile, JobDescription
+
+_EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.I)
+_PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d ()-]{8,}\d)(?!\d)")
+_URL_RE = re.compile(r"https?://[^\s)]+", re.I)
 
 
 def tailor_resume_text(resume_text: str, missing_keywords: tuple[str, ...], *, max_additions: int = 15) -> str:
@@ -29,17 +34,49 @@ def tailor_resume_text(resume_text: str, missing_keywords: tuple[str, ...], *, m
     )
 
 
+def validate_generated_resume(source_resume: str, generated_resume: str) -> str:
+    """Reject unsafe LLM resume output containing newly invented contact identifiers.
+
+    Rewriting can legitimately paraphrase prose, so validation deliberately checks
+    high-risk identifiers that should never change silently: email addresses, phone
+    numbers, and URLs. The original resume is returned for any unsafe output.
+    """
+    source = source_resume.strip()
+    generated = generated_resume.strip()
+    if not source or not generated:
+        raise ValueError("source and generated resumes must not be empty")
+
+    def normalize(values: list[str]) -> set[str]:
+        return {value.rstrip(".,;:)").casefold() for value in values}
+
+    source_emails = normalize(_EMAIL_RE.findall(source))
+    generated_emails = normalize(_EMAIL_RE.findall(generated))
+    if not generated_emails.issubset(source_emails):
+        return source
+
+    source_phones = normalize(_PHONE_RE.findall(source))
+    generated_phones = normalize(_PHONE_RE.findall(generated))
+    if not generated_phones.issubset(source_phones):
+        return source
+
+    source_urls = normalize(_URL_RE.findall(source))
+    generated_urls = normalize(_URL_RE.findall(generated))
+    if not generated_urls.issubset(source_urls):
+        return source
+
+    # Prevent an unexpectedly huge model response from becoming the artifact.
+    if len(generated) > max(len(source) * 3, 20000):
+        return source
+    return generated
+
+
 async def tailor_resume_with_llm(
     resume_text: str,
     job_description: str,
     *,
     model: str = "gemini-3.6-flash",
 ) -> str:
-    """Generate an ATS-focused resume draft while explicitly prohibiting invented facts.
-
-    The result is a draft for user verification; the browser workflow continues to use the
-    supplied resume file unless the user explicitly replaces it with the reviewed draft.
-    """
+    """Generate an ATS-focused resume draft while explicitly prohibiting invented facts."""
     if not resume_text.strip() or not job_description.strip():
         raise ValueError("resume_text and job_description must not be empty")
     prompt = f"""
@@ -50,6 +87,7 @@ STRICT RULES:
 - Do not invent metrics, responsibilities, technologies, employers, credentials, locations, or years of experience.
 - You may reorder sections, tighten wording, remove repetition, and emphasize experience that is already present.
 - If a job keyword is not supported by the source resume, do not add it as a claimed skill.
+- Never change, invent, or add an email address, phone number, URL, employer, credential, date, metric, or identity detail.
 - Keep the output ATS-friendly: plain text headings, concise bullets, no tables, no icons, no graphics.
 - Return only the revised resume text, with no explanation.
 
@@ -64,7 +102,7 @@ SOURCE RESUME:
     output = str(response.completion).strip()
     if not output:
         raise RuntimeError("resume tailoring model returned empty output")
-    return output
+    return validate_generated_resume(resume_text, output)
 
 
 def write_resume_docx(resume_text: str, output_path: str | Path) -> Path:
@@ -122,6 +160,7 @@ async def build_cover_letter_with_llm(
     prompt = f"""
 Write a concise cover letter for this job using only facts present in the supplied profile and resume.
 Do not invent employers, achievements, metrics, skills, credentials, dates, or experience.
+Never invent or change contact details.
 Keep it professional, specific to the role, ATS-friendly, and under 250 words.
 Return only the cover letter.
 
