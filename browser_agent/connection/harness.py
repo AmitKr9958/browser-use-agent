@@ -2,16 +2,35 @@
 
 from __future__ import annotations
 
+import inspect
+from typing import Any
+
 from browser_harness.daemon import get_ws_url
 from browser_use import BrowserProfile, BrowserSession
 
 
-def connect_browser_harness() -> BrowserSession:
-    """Create a persistent BrowserSession attached to the Harness CDP browser.
+async def start_browser_harness_session() -> BrowserSession:
+    """Create and fully initialize a BrowserSession attached to Harness Chrome."""
+    ws_url = get_ws_url()
+    if not ws_url:
+        raise RuntimeError("Browser Harness did not return a Chrome CDP WebSocket URL")
 
-    The browser itself is owned by Browser Harness. ``keep_alive=True`` tells
-    Browser Use not to kill that external browser when an Agent finishes, which
-    is required for repeated local agent runs against the same Chrome session.
+    profile = BrowserProfile(
+        cdp_url=ws_url,
+        is_local=True,
+        keep_alive=True,
+    )
+    session = BrowserSession(browser_profile=profile)
+    await session.start()
+    return session
+
+
+def connect_browser_harness() -> BrowserSession:
+    """Create a BrowserSession attached to the existing Harness CDP browser.
+
+    This synchronous constructor is retained for callers that explicitly manage
+    the session lifecycle. Async application workflows should use
+    ``start_browser_harness_session`` so CDP is initialized before browser I/O.
     """
     ws_url = get_ws_url()
     if not ws_url:
@@ -23,3 +42,12 @@ def connect_browser_harness() -> BrowserSession:
         keep_alive=True,
     )
     return BrowserSession(browser_profile=profile)
+
+
+async def stop_browser_harness_session(session: Any) -> None:
+    """Stop a Harness-backed session without assuming a synchronous stop API."""
+    stop = getattr(session, "stop", None)
+    if callable(stop):
+        result = stop()
+        if inspect.isawaitable(result):
+            await result
