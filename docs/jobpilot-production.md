@@ -13,4 +13,12 @@ JobPilot is a controlled browser automation layer. Production operation follows 
 - Resume paths are explicitly passed to Browser Use as authorized local upload paths; the path must exist on the machine running JobPilot.
 - Browser-agent judging is disabled by default for JobPilot runs to avoid a second model call becoming an unnecessary availability failure after the main run completes.
 - An optional OpenAI fallback can be enabled for transient primary-model failures by setting `OPENAI_API_KEY` and `JOBPILOT_FALLBACK_MODEL` in the runtime environment. The fallback is never enabled merely by guessing or inventing credentials.
+- 9Router is supported as an OpenAI-compatible primary gateway. When `NINEROUTER_API_KEY` is set, JobPilot uses `ChatOpenAI` against `NINEROUTER_BASE_URL` (default `http://localhost:20128/v1`) and `NINEROUTER_MODEL` (defaulting to the configured JobPilot model). The API key is read only from the runtime environment and must never be committed to source control.
+- 9Router's documented setup is to install the router, connect provider credentials in its dashboard, and point compatible tools at `http://localhost:20128/v1`; its routing layer can switch among configured providers. url9Router documentationhttps://docs.9router.com/
+- Recommended PowerShell setup after installing/running 9Router locally:
+  ```powershell
+  $env:NINEROUTER_API_KEY = "YOUR_9ROUTER_KEY"
+  $env:NINEROUTER_BASE_URL = "http://localhost:20128/v1"
+  $env:NINEROUTER_MODEL = "YOUR_ROUTER_MODEL"
+  ```
 - Real authenticated browser acceptance testing must use a user-authorized browser profile or a dedicated test account. Production credentials must never be committed to the repository or passed through source-controlled configuration.
