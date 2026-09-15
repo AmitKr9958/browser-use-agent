@@ -33,8 +33,10 @@ jobs:
         run: uv sync --dev
       - name: Run browser-agent and JobPilot unit tests
         run: uv run pytest tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_policy.py tests/test_jobpilot.py tests/test_jobpilot_application.py tests/test_jobpilot_application_security.py tests/test_jobpilot_job_source.py tests/test_jobpilot_extraction.py tests/test_jobpilot_questionnaire.py tests/test_jobpilot_dummy_application.py -q
+      - name: Run live dummy job-application web smoke test
+        run: uv run pytest tests/test_jobpilot_live_web_application.py -q
       - name: Lint browser-agent, JobPilot layer and examples
-        run: uv run ruff check browser_agent tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_policy.py tests/test_jobpilot.py tests/test_jobpilot_application.py tests/test_jobpilot_application_security.py tests/test_jobpilot_job_source.py tests/test_jobpilot_extraction.py tests/test_jobpilot_questionnaire.py tests/test_jobpilot_dummy_application.py examples/live_harness_agent_smoke.py
+        run: uv run ruff check browser_agent tests/test_tabs.py tests/test_connection.py tests/test_agent.py tests/test_cli.py tests/test_cli_execution.py tests/test_basic_actions.py tests/test_policy.py tests/test_jobpilot.py tests/test_jobpilot_application.py tests/test_jobpilot_application_security.py tests/test_jobpilot_job_source.py tests/test_jobpilot_extraction.py tests/test_jobpilot_questionnaire.py tests/test_jobpilot_dummy_application.py tests/test_jobpilot_live_web_application.py examples/live_harness_agent_smoke.py
       - name: Type-check browser-agent and JobPilot layers
         run: uv run pyright browser_agent
       - name: Build distribution
