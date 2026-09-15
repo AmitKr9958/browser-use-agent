@@ -7,7 +7,7 @@ import pytest
 
 from browser_agent.agents.agent import run_on_tab
 from browser_agent.models.india import IndiaRuntimeConfig
-from browser_agent.tabs.manager import TabNotFoundError
+from browser_agent.tabs.manager import TabVerificationError
 from browser_agent.tabs.models import TabSelector
 
 
@@ -64,7 +64,6 @@ async def test_run_on_tab_verifies_using_same_session(monkeypatch: Any) -> None:
     session = FakeSession()
     captured: dict[str, Any] = {}
     _patch_agent(monkeypatch, captured)
-
     history = await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
     assert history.final_result() == "ok"
     assert captured["browser_session"] is session
@@ -142,7 +141,6 @@ async def test_run_on_tab_rejects_invalid_limits() -> None:
 @pytest.mark.asyncio
 async def test_run_on_tab_detects_target_change_on_same_session(monkeypatch: Any) -> None:
     session = FakeSession()
-    captured: dict[str, Any] = {}
 
     class FakeAgent:
         def __init__(self, **kwargs: Any) -> None:
@@ -154,7 +152,7 @@ async def test_run_on_tab_detects_target_change_on_same_session(monkeypatch: Any
 
     monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
     monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
-    with pytest.raises(Exception, match="Active tab metadata changed|Active target changed"):
+    with pytest.raises(TabVerificationError, match="Active tab metadata changed|Active target changed"):
         await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
 
 
