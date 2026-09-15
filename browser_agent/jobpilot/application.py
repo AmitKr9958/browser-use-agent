@@ -155,6 +155,16 @@ def build_application_report_from_result(*, target_url: str, raw_result: str) ->
             str(item).strip() for item in structured.get("blockers", [])
             if str(item).strip()
         ) if isinstance(structured.get("blockers", []), list) else ()
+        incomplete_uploads = tuple(
+            field.label for field in fields
+            if field.field_type.lower() in {"upload", "file"}
+            and field.planned_value
+            and (not field.verified or field.status in {"skipped", "manual", "conflict", "unmapped"})
+        )
+        if incomplete_uploads:
+            structured_blockers = structured_blockers + (
+                "required resume/file upload was not verified: " + ", ".join(incomplete_uploads),
+            )
         if structured_blockers:
             return build_application_report(
                 status="blocked",
