@@ -114,3 +114,21 @@ def test_sensitive_values_are_redacted_from_raw_result() -> None:
     )
     assert "amit@example.com" not in report.raw_result
     assert "98765 43210" not in report.raw_result
+
+
+def test_unverified_planned_resume_upload_blocks_completion() -> None:
+    report = build_application_report_from_result(
+        target_url="https://example.com/apply",
+        raw_result='''{
+          "final_page": "https://example.com/apply",
+          "fields": [
+            {"label": "Email", "type": "input", "planned_value": "a@example.com", "observed_value": "a@example.com", "source": "user", "status": "verified", "verified": true},
+            {"label": "Upload Resume/CV", "type": "upload", "planned_value": "C:\\\\Resume.docx", "observed_value": "", "source": "resume", "status": "skipped", "verified": false, "reason": "file unavailable"}
+          ],
+          "blockers": [],
+          "submitted": false
+        }''',
+    )
+    assert report.status == "blocked"
+    assert any("Upload Resume/CV" in blocker for blocker in report.blockers)
+    assert report.submitted is False
