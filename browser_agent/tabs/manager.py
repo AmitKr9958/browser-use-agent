@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-import inspect
-from typing import Any, cast
+import asyncio
+import logging
+from typing import Any
 
 from browser_use.browser.events import SwitchTabEvent
 
+from browser_agent.connection.session_manager import BrowserSessionManager
+from browser_agent.utils import await_if_needed
 from .models import TabRecord, TabSelector
+
+logger = logging.getLogger(__name__)
 
 
 class TabNotFoundError(LookupError):
@@ -22,13 +27,6 @@ class TabVerificationError(RuntimeError):
     """The selected browser target is no longer the expected target."""
 
 
-async def _await_if_needed(value: Any) -> Any:
-    """Await a result when it is awaitable; otherwise return it unchanged."""
-    if inspect.isawaitable(value):
-        return await value
-    return value
-
-
 class TabManager:
     """Enumerate, locate, select, and verify tabs using stable target identity."""
 
@@ -37,15 +35,21 @@ class TabManager:
 
     async def _ensure_started(self) -> None:
         """Initialize an unattached BrowserSession before reading its target cache."""
-        start = getattr(self.browser_session, "start", None)
-        if not callable(start):
+        async with BrowserSessionManager(self.browser_session):
             return
-        if getattr(self.browser_session, "_cdp_client_root", None) is None:
-            await _await_if_needed(cast(Any, start)())
 
-    async def list_tabs(self) -> list[TabRecord]:
+    async def list_tabs(self, timeout: float = 10.0) -> list[TabRecord]:
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than 0")
         await self._ensure_started()
-        tabs = await self.browser_session.get_tabs()
+        try:
+            tabs = await asyncio.wait_for(self.browser_session.get_tabs(), timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            logger.error("get_tabs timed out after %.2fs", timeout)
+            raise TimeoutError(f"Failed to list browser tabs within {timeout} seconds") from exc
+        except Exception as exc:
+            logger.error("Failed to list browser tabs: %s", exc, exc_info=True)
+            raise RuntimeError("Failed to list browser tabs") from exc
         return [
             TabRecord(
                 index=index,
@@ -56,9 +60,9 @@ class TabManager:
             for index, tab in enumerate(tabs)
         ]
 
-    async def find_tab(self, selector: TabSelector) -> TabRecord:
+    async def find_tab(self, selector: TabSelector, timeout: float = 10.0) -> TabRecord:
         selector.validate()
-        tabs = await self.list_tabs()
+        tabs = await self.list_tabs(timeout=timeout)
         matches = [tab for tab in tabs if self._matches(tab, selector)]
         if not matches:
             raise TabNotFoundError(f"No browser tab matched {selector!r}")
@@ -69,27 +73,38 @@ class TabManager:
             )
         return matches[0]
 
-    async def select_tab(self, selector: TabSelector) -> TabRecord:
+    async def select_tab(self, selector: TabSelector, timeout: float = 10.0) -> TabRecord:
         """Switch to exactly one tab and verify stable target identity."""
-        selected = await self.find_tab(selector)
-
-        # If Chrome is already showing the requested target, do not dispatch a
-        # redundant SwitchTabEvent. This avoids re-entering Browser Use's focus
-        # watchdog for an already-active external Harness target.
+        selected = await self.find_tab(selector, timeout=timeout)
         try:
-            current_url = str(await self.browser_session.get_current_page_url() or "")
-            current_title = str(await self.browser_session.get_current_page_title() or "")
-        except Exception:
-            current_url = current_title = ""
+            current_url = str(
+                await asyncio.wait_for(self.browser_session.get_current_page_url(), timeout=timeout)
+                or ""
+            )
+            current_title = str(
+                await asyncio.wait_for(self.browser_session.get_current_page_title(), timeout=timeout)
+                or ""
+            )
+        except asyncio.TimeoutError as exc:
+            logger.warning("Timeout reading current page metadata for tab %s", selected.target_id)
+            raise TimeoutError("Cannot verify current tab state within the configured timeout") from exc
+        except Exception as exc:
+            logger.error(
+                "Failed to read current page metadata for tab %s: %s",
+                selected.target_id,
+                exc,
+                exc_info=True,
+            )
+            raise RuntimeError("Cannot verify current tab state before switching") from exc
 
         if current_url != selected.url or current_title != selected.title:
             event_bus = getattr(self.browser_session, "event_bus", None)
             dispatch = getattr(event_bus, "dispatch", None)
             if callable(dispatch):
-                event = cast(Any, dispatch)(SwitchTabEvent(target_id=selected.target_id))
-                await _await_if_needed(event)
-                switched_target = await _await_if_needed(
-                    cast(Any, event).event_result(raise_if_any=True, raise_if_none=True)
+                event = dispatch(SwitchTabEvent(target_id=selected.target_id))
+                await await_if_needed(event)
+                switched_target = await await_if_needed(
+                    event.event_result(raise_if_any=True, raise_if_none=True)
                 )
                 if str(switched_target) != selected.target_id:
                     raise TabVerificationError(
@@ -99,21 +114,33 @@ class TabManager:
                 switch_to_tab = getattr(self.browser_session, "switch_to_tab", None)
                 if not callable(switch_to_tab):
                     raise RuntimeError("BrowserSession has no supported tab-switch mechanism")
-                await _await_if_needed(cast(Any, switch_to_tab)(selected.index))
+                await await_if_needed(switch_to_tab(selected.index))
 
-        await self.verify_tab(selected)
-        return selected
+        return await self.verify_tab(selected, timeout=timeout)
 
-    async def verify_tab(self, expected: TabRecord) -> TabRecord:
-        """Verify target identity first; metadata is returned as a fresh snapshot."""
+    async def verify_tab(self, expected: TabRecord, timeout: float = 10.0) -> TabRecord:
+        """Verify target identity and current metadata on the same session."""
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than 0")
         focused_target = getattr(self.browser_session, "agent_focus_target_id", None)
         if focused_target is not None and str(focused_target) != expected.target_id:
             raise TabVerificationError(
                 f"Active target changed: expected {expected.target_id}, got {focused_target}"
             )
-
-        actual_url = str(await self.browser_session.get_current_page_url() or "")
-        actual_title = str(await self.browser_session.get_current_page_title() or "")
+        try:
+            actual_url = str(
+                await asyncio.wait_for(self.browser_session.get_current_page_url(), timeout=timeout)
+                or ""
+            )
+            actual_title = str(
+                await asyncio.wait_for(self.browser_session.get_current_page_title(), timeout=timeout)
+                or ""
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError("Failed to verify active browser tab within the configured timeout") from exc
+        except Exception as exc:
+            logger.error("Failed to verify tab %s: %s", expected.target_id, exc, exc_info=True)
+            raise RuntimeError("Failed to verify active browser tab") from exc
         if actual_url != expected.url or actual_title != expected.title:
             raise TabVerificationError(
                 f"Active tab metadata changed: expected {expected.title!r} / {expected.url!r}, "
