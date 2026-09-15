@@ -64,7 +64,12 @@ async def test_run_on_tab_verifies_using_same_session(monkeypatch: Any) -> None:
     session = FakeSession()
     captured: dict[str, Any] = {}
     _patch_agent(monkeypatch, captured)
-    history = await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
+    history = await run_on_tab(
+        "Read the page title",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        india_runtime=IndiaRuntimeConfig(),
+    )
     assert history.final_result() == "ok"
     assert captured["browser_session"] is session
     assert "Read the page title" in captured["task"]
@@ -77,8 +82,14 @@ async def test_run_on_tab_supports_custom_india_runtime(monkeypatch: Any) -> Non
     session = FakeSession()
     captured: dict[str, Any] = {}
     _patch_agent(monkeypatch, captured)
-    await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=session,
-                     india_runtime=IndiaRuntimeConfig(locale="hi-IN", timezone="Asia/Kolkata", currency="INR", country_code="IN"))
+    await run_on_tab(
+        "Read",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        india_runtime=IndiaRuntimeConfig(
+            locale="hi-IN", timezone="Asia/Kolkata", currency="INR", country_code="IN"
+        ),
+    )
     assert "locale=hi-IN" in captured["task"]
 
 
@@ -87,8 +98,13 @@ async def test_run_on_tab_can_disable_regional_guidance(monkeypatch: Any) -> Non
     session = FakeSession()
     captured: dict[str, Any] = {}
     _patch_agent(monkeypatch, captured)
-    await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=session,
-                     india_runtime=None, interaction_policy=None)
+    await run_on_tab(
+        "Read",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        india_runtime=None,
+        interaction_policy=None,
+    )
     assert captured["task"] == "Read"
 
 
@@ -97,8 +113,14 @@ async def test_run_on_tab_passes_execution_limits(monkeypatch: Any) -> None:
     session = FakeSession()
     captured: dict[str, Any] = {}
     _patch_agent(monkeypatch, captured)
-    await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session,
-                     max_steps=2, llm_timeout=30, step_timeout=45)
+    await run_on_tab(
+        "Read the page title",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        max_steps=2,
+        llm_timeout=30,
+        step_timeout=45,
+    )
     assert captured["llm_timeout"] == 30
     assert captured["step_timeout"] == 45
     assert captured["run_kwargs"] == {"max_steps": 2}
@@ -117,7 +139,9 @@ async def test_run_on_tab_accepts_sync_agent_run(monkeypatch: Any) -> None:
 
     monkeypatch.setattr("browser_agent.agents.agent.Agent", FakeAgent)
     monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: model)
-    history = await run_on_tab("Read the page title", TabSelector(target_id="target-1"), browser_session=session)
+    history = await run_on_tab(
+        "Read the page title", TabSelector(target_id="target-1"), browser_session=session
+    )
     assert history.final_result() == "ok"
     assert not inspect.isawaitable(history)
 
@@ -174,6 +198,11 @@ async def test_run_on_tab_retries_with_fallback(monkeypatch: Any) -> None:
     monkeypatch.setattr("browser_agent.agents.agent.ChatGoogle", lambda model: f"primary:{model}")
     monkeypatch.setattr("browser_agent.agents.agent.ChatOpenAI", lambda model: f"fallback:{model}")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    history = await run_on_tab("Read", TabSelector(target_id="target-1"), browser_session=session, fallback_model="gpt-test")
+    history = await run_on_tab(
+        "Read",
+        TabSelector(target_id="target-1"),
+        browser_session=session,
+        fallback_model="gpt-test",
+    )
     assert history.final_result() == "ok"
     assert calls == ["primary:gemini-3.6-flash", "fallback:gpt-test"]
