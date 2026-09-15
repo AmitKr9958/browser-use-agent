@@ -11,7 +11,7 @@ from browser_agent.jobpilot.workflow import build_application_task
 FIXTURE = Path(__file__).parent / "fixtures" / "jobpilot_dummy_application.html"
 
 
-def test_prepare_cli_has_bounded_default_step_budget() -> None:
+def test_prepare_cli_has_bounded_default_step_budget_and_private_memory() -> None:
     args = build_parser().parse_args(
         [
             "prepare",
@@ -26,6 +26,7 @@ def test_prepare_cli_has_bounded_default_step_budget() -> None:
         ]
     )
     assert args.max_steps == 80
+    assert args.memory.endswith("JobPilot/memory.json") or args.memory.endswith("JobPilot\\memory.json")
 
 
 def test_dummy_application_contains_expected_review_and_sensitive_fields() -> None:
@@ -36,7 +37,7 @@ def test_dummy_application_contains_expected_review_and_sensitive_fields() -> No
     assert "Submit application" in html
 
 
-def test_dummy_application_task_allows_progress_but_forbids_submission() -> None:
+def test_dummy_application_task_requires_structured_verified_audit() -> None:
     plan = ApplicationPlan(
         job=JobDescription(
             title="Data Analyst",
@@ -58,6 +59,10 @@ def test_dummy_application_task_allows_progress_but_forbids_submission() -> None
     assert "safe Next" in task
     assert "Never submit the application" in task
     assert "STOP at the final Review/confirmation stage" in task
+    assert '"fields"' in task
+    assert '"corrections"' in task
+    assert '"final_submission_control_present"' in task
+    assert '"submitted": false' in task
     assert "salary" in task.lower()
     assert "work_authorization" in task
 
@@ -65,7 +70,7 @@ def test_dummy_application_task_allows_progress_but_forbids_submission() -> None
 def test_dummy_verified_result_is_completed_but_never_submitted() -> None:
     report = build_application_report_from_result(
         target_url="https://example.test/application",
-        raw_result="Full name field value verified; filename visible; stopped at final review.",
+        raw_result='{"fields":[{"label":"Full Name","planned_value":"Test Candidate","observed_value":"Test Candidate","source":"resume","status":"filled","verified":true}],"submitted":false,"blockers":[]}',
     )
     assert report.status == "completed"
     assert report.metadata["verification_signal"] is True
@@ -80,3 +85,12 @@ def test_dummy_submission_language_is_rejected() -> None:
     assert report.status == "failed"
     assert report.submitted is False
     assert report.metadata["submission_signal"] is True
+
+
+def test_structured_submission_claim_is_rejected() -> None:
+    report = build_application_report_from_result(
+        target_url="https://example.test/application",
+        raw_result='{"fields":[{"label":"Full Name","verified":true}],"submitted":true}',
+    )
+    assert report.status == "failed"
+    assert report.submitted is False
