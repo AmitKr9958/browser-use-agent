@@ -6,6 +6,7 @@ import inspect
 import os
 from typing import Any, cast
 
+from dotenv import load_dotenv
 from browser_use import Agent, ChatGoogle, ChatOpenAI
 
 from browser_agent.connection.harness import connect_browser_harness
@@ -13,6 +14,10 @@ from browser_agent.models.india import DEFAULT_INDIA_RUNTIME, IndiaRuntimeConfig
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY, SensitiveInteractionPolicy
 from browser_agent.tabs.manager import TabManager, TabNotFoundError
 from browser_agent.tabs.models import TabRecord, TabSelector
+
+# Load local development/runtime configuration without overriding explicitly supplied
+# process environment variables. The .env file itself is ignored by Git.
+load_dotenv()
 
 
 async def _await_if_needed(value: Any) -> Any:
