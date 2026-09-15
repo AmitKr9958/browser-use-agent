@@ -102,7 +102,7 @@ timeout = 300
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
-markers = ["slow: marks tests that are slow", "integration: marks tests that are slow", "unit: marks tests that are slow", "asyncio: mark asyncio tests"]
+markers = ["slow: marks slow", "integration: marks integration", "unit: marks unit", "asyncio: mark asyncio tests"]
 addopts = "-svx --strict-markers --tb=short --dist=loadscope"
 python_files = ["test_*.py", "*_test.py"]
 log_cli = true
