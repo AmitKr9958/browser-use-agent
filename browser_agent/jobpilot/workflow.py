@@ -79,16 +79,47 @@ Missing keywords for review only: {', '.join(plan.match.missing_keywords) or 'no
 
 {build_questionnaire_policy()}
 
-FINAL ACCEPTANCE REPORT
-Return a concise structured report containing:
-- final page/step reached
-- each field filled and whether its value/state was verified
-- each skipped field and exact reason
-- resume upload verification
-- cover-letter verification
-- any blocker (CAPTCHA, login, MFA/OTP, payment, identity verification, unsupported control, inaccessible frame, etc.)
-- whether a final submission control was found and left untouched
-- overall status: COMPLETED_REVIEW_READY, BLOCKED_MANUAL_REVIEW, or FAILED_VERIFICATION
+EXECUTION AUDIT CONTRACT
+Return ONLY one JSON object after the run. Do not wrap it in prose. Use exactly this shape:
+{{
+  "final_page": "string",
+  "fields": [
+    {{
+      "label": "visible/accessibility label",
+      "type": "input|textarea|select|combobox|radio|checkbox|date|upload|rich_text|other",
+      "planned_value": "value intended by JobPilot, empty when none",
+      "observed_value": "actual live value/state read back after the action",
+      "source": "agent|resume|user|existing_page|unknown",
+      "status": "filled|verified|skipped|conflict|manual|unmapped",
+      "verified": true,
+      "reason": "short reason when not verified",
+      "step": "step/page label"
+    }}
+  ],
+  "corrections": [
+    {{
+      "field": "field/question label",
+      "before_value": "value JobPilot had supplied",
+      "after_value": "value explicitly entered by the user",
+      "source": "user",
+      "explicit": true,
+      "reason": "why this is a confirmed user correction",
+      "step": "step/page label"
+    }}
+  ],
+  "blockers": [],
+  "final_submission_control_present": false,
+  "submitted": false
+}}
+
+AUDIT RULES
+- Read the live value/state after every fill, selection, checkbox/radio change, rich-text edit, and upload.
+- A field is verified only when the observed live state matches the intended state; do not infer verification from an action succeeding.
+- Preserve an existing non-empty value when it conflicts with the plan and mark it conflict; never silently overwrite it.
+- A correction may be emitted only when the user explicitly changed/confirmed the value during this run. Never infer a user correction merely because a value differs.
+- Never persist, echo, or place secrets, OTPs, passwords, government IDs, bank/card data, or identity-document numbers in corrections.
+- `submitted` must always be false. If a final control is present, leave it untouched and set final_submission_control_present=true.
+- If a blocker is encountered, include a concise blocker and stop at that step.
 
 SAFETY
 - Never invent personal information, employment history, education, dates, salary, authorization, sponsorship, identity numbers, passwords, OTPs, or demographic answers.
