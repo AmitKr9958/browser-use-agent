@@ -16,11 +16,19 @@ async def _await_if_needed(value: Any) -> Any:
     return value
 
 
+async def _ensure_session_started(session: Any) -> Any:
+    """Start a Browser Use session before using CDP-backed page operations."""
+    start = getattr(session, "start", None)
+    if callable(start):
+        await _await_if_needed(start())
+    return session
+
+
 async def open_url(url: str, browser_session: Any | None = None) -> dict[str, str]:
     """Open ``url`` in a new browser tab and return its target metadata."""
     if not url.strip():
         raise ValueError("url must not be empty")
-    session = browser_session or connect_browser_harness()
+    session = await _ensure_session_started(browser_session or connect_browser_harness())
     page = await _await_if_needed(cast(Any, session).new_page(url.strip()))
     return {
         "target_id": str(getattr(page, "target_id", "")),
@@ -37,7 +45,7 @@ async def click_selector(
     """Click exactly one CSS-selected element on the current browser page."""
     if not selector.strip():
         raise ValueError("selector must not be empty")
-    session = browser_session or connect_browser_harness()
+    session = await _ensure_session_started(browser_session or connect_browser_harness())
     page = await _await_if_needed(cast(Any, session).get_current_page())
     if page is None:
         raise RuntimeError("No active browser page is available")
@@ -59,7 +67,7 @@ async def screenshot(
     """Capture the current page as PNG and write it to ``output_path``."""
     path = Path(output_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    session = browser_session or connect_browser_harness()
+    session = await _ensure_session_started(browser_session or connect_browser_harness())
     page = await _await_if_needed(cast(Any, session).get_current_page())
     if page is None:
         raise RuntimeError("No active browser page is available")
