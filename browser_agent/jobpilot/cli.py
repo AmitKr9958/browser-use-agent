@@ -12,7 +12,7 @@ from .application import build_application_report_from_result
 from .audit import parse_structured_result
 from .documents import write_resume_docx
 from .job_source import get_job_posting_xlsx
-from .memory import default_memory_path, learned_answers, merge_profile, remember_correction
+from .memory import default_memory_path, learned_answers, lookup_answer, merge_profile, remember_correction
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot, extract_job_description_from_url
@@ -71,11 +71,22 @@ def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, Contact
 
 
 def _apply_memory(plan, memory_path: str):
+    """Overlay learned answers only when the current question resolves to that memory key.
+
+    Explicit answers already present in the plan always win. Semantic lookup is
+    intentionally conservative: memory itself decides whether two question labels
+    normalize to the same key, avoiding broad fuzzy matching that could mis-answer
+    sensitive application questions.
+    """
     if not memory_path:
         return plan
     answers = dict(plan.answers)
-    for question, answer in learned_answers(memory_path).items():
-        answers.setdefault(question, answer)
+    for question in tuple(answers):
+        learned = lookup_answer(memory_path, question)
+        if learned is not None and not str(answers[question]).strip():
+            answers[question] = learned
+    for question, learned in learned_answers(memory_path).items():
+        answers.setdefault(question, learned)
     return replace(plan, answers=answers)
 
 
