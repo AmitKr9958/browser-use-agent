@@ -6,6 +6,9 @@ import pytest
 
 from browser_agent.actions.basic import open_url
 from browser_agent.jobpilot.cli import _load_inputs
+from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription
+from browser_agent.jobpilot.ats import score_job_match
+from browser_agent.jobpilot.workflow import build_application_task
 
 
 class _FakePage:
@@ -129,3 +132,29 @@ def test_load_inputs_still_accepts_description_file(tmp_path):
     job, _, _ = _load_inputs(args)
 
     assert job.description == "Excel and Power BI experience"
+
+
+def test_application_task_contains_generated_cover_letter_and_resume_path():
+    job = JobDescription(
+        title="Team Lead",
+        company="Example Corp",
+        description="Python team lead role",
+        url="https://example.com/apply",
+    )
+    profile = ContactProfile(name="Amit Kumar", email="amit@example.com", phone="+91 98765 43210")
+    plan = ApplicationPlan(
+        job=job,
+        profile=profile,
+        match=score_job_match(job.description, "Amit Kumar Python team lead"),
+        tailored_resume_text="Amit Kumar Python team lead",
+        cover_letter="Dear Hiring Team,\nI am interested in this Team Lead role.",
+        answers={},
+        auto_submit=False,
+    )
+
+    task = build_application_task(plan, resume_path="C:\\Resume\\Amit.docx")
+
+    assert "Resume file: C:\\Resume\\Amit.docx" in task
+    assert "SUPPLIED GENERATED COVER LETTER" in task
+    assert "Dear Hiring Team" in task
+    assert "Never submit the application." in task
