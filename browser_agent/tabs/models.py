@@ -17,7 +17,7 @@ class TabRecord:
 
 @dataclass(frozen=True, slots=True)
 class TabSelector:
-    """Deterministic tab selector; provide exactly one selector field."""
+    """Deterministic tab selector; provide exactly one non-empty selector field."""
 
     index: int | None = None
     target_id: str | None = None
@@ -27,13 +27,21 @@ class TabSelector:
     url_contains: str | None = None
 
     def validate(self) -> None:
-        fields = [
-            self.index is not None,
-            self.target_id is not None,
-            self.title is not None,
-            self.url is not None,
-            self.title_contains is not None,
-            self.url_contains is not None,
+        provided = [
+            ("index", self.index),
+            ("target_id", self.target_id),
+            ("title", self.title),
+            ("url", self.url),
+            ("title_contains", self.title_contains),
+            ("url_contains", self.url_contains),
         ]
-        if sum(fields) != 1:
+        selected = [(name, value) for name, value in provided if value is not None]
+        if len(selected) != 1:
             raise ValueError("TabSelector requires exactly one selector field")
+        name, value = selected[0]
+        if name == "index":
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("TabSelector index must be a non-negative integer")
+            return
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"TabSelector {name} must not be empty")
