@@ -122,12 +122,32 @@ class TabManager:
         """Verify target identity and current metadata on the same session."""
         if timeout <= 0:
             raise ValueError("timeout must be greater than 0")
+
+        # Browser Use exposes the active target through agent_focus_target_id. Some
+        # lightweight/test sessions don't expose that field, so fall back to the
+        # session's current target id and finally verify that the expected target
+        # still exists in the live target list. This prevents stale URL/title data
+        # from making a changed/closed target look successfully verified.
+        active_target: str | None = None
         focused_target = getattr(self.browser_session, "agent_focus_target_id", None)
-        if focused_target is not None and str(focused_target) != expected.target_id:
-            raise TabVerificationError(
-                f"Active target changed: expected {expected.target_id}, got {focused_target}"
-            )
+        if focused_target is not None:
+            active_target = str(focused_target)
+        else:
+            session_target = getattr(self.browser_session, "_target_id", None)
+            if session_target is not None:
+                active_target = str(session_target)
+
         try:
+            if active_target is None:
+                get_target_info = getattr(self.browser_session, "get_current_target_info", None)
+                if callable(get_target_info):
+                    target_info = await asyncio.wait_for(
+                        await_if_needed(get_target_info()), timeout=timeout
+                    )
+                    target_id = getattr(target_info, "target_id", None) if target_info is not None else None
+                    if target_id is not None:
+                        active_target = str(target_id)
+
             actual_url = str(
                 await asyncio.wait_for(self.browser_session.get_current_page_url(), timeout=timeout)
                 or ""
@@ -136,11 +156,26 @@ class TabManager:
                 await asyncio.wait_for(self.browser_session.get_current_page_title(), timeout=timeout)
                 or ""
             )
+
+            if active_target is None:
+                tabs = await asyncio.wait_for(self.browser_session.get_tabs(), timeout=timeout)
+                target_ids = {str(tab.target_id) for tab in tabs}
+                if expected.target_id not in target_ids:
+                    raise TabVerificationError(
+                        f"Active target changed: expected {expected.target_id}, but that target is no longer active"
+                    )
+            elif active_target != expected.target_id:
+                raise TabVerificationError(
+                    f"Active target changed: expected {expected.target_id}, got {active_target}"
+                )
+        except TabVerificationError:
+            raise
         except asyncio.TimeoutError as exc:
             raise TimeoutError("Failed to verify active browser tab within the configured timeout") from exc
         except Exception as exc:
             logger.error("Failed to verify tab %s: %s", expected.target_id, exc, exc_info=True)
             raise RuntimeError("Failed to verify active browser tab") from exc
+
         if actual_url != expected.url or actual_title != expected.title:
             raise TabVerificationError(
                 f"Active tab metadata changed: expected {expected.title!r} / {expected.url!r}, "
