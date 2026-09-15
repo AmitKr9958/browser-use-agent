@@ -5,23 +5,31 @@ import pytest
 
 from browser_agent.actions.basic import click_selector, open_url, screenshot
 from browser_agent.agents.agent import _build_primary_llm
-from browser_agent.connection.harness import start_browser_harness_session
 from browser_agent.jobpilot.cli import _load_inputs
 from browser_agent.jobpilot.workflow import build_application_task
-from browser_use import Agent, BrowserSession, ChatGoogle, ChatOpenAI
+from browser_use import Agent, ChatGoogle, ChatOpenAI
+
+
+class _FakeBrowserSession:
+    """Small non-Pydantic session double for action-level tests."""
+
+    def __init__(self, target_id=None):
+        self.cdp_client = None
+        self._target_id = target_id
+        self.new_page = AsyncMock()
+        self.get_current_target_info = AsyncMock()
 
 
 @pytest.mark.asyncio
 async def test_open_url_starts_supplied_browser_session_before_new_page(monkeypatch):
-    session = BrowserSession()
+    session = _FakeBrowserSession(target_id="target-123")
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    session._target_id = "target-123"
+    session.new_page = AsyncMock(return_value=page)
 
     ensure_started = AsyncMock(return_value=session)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", ensure_started)
-    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
 
     result = await open_url("https://example.com", browser_session=session)
 
@@ -33,12 +41,11 @@ async def test_open_url_starts_supplied_browser_session_before_new_page(monkeypa
 
 @pytest.mark.asyncio
 async def test_open_url_uses_browser_use_private_target_identity(monkeypatch):
-    session = BrowserSession()
-    session._target_id = "private-target"
+    session = _FakeBrowserSession(target_id="private-target")
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
+    session.new_page = AsyncMock(return_value=page)
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
 
     result = await open_url("https://example.com", browser_session=session)
@@ -48,18 +55,12 @@ async def test_open_url_uses_browser_use_private_target_identity(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_open_url_falls_back_to_current_target_info(monkeypatch):
-    session = BrowserSession()
+    session = _FakeBrowserSession()
     page = AsyncMock()
     page.get_url = AsyncMock(return_value="https://example.com")
     page.get_title = AsyncMock(return_value="Example")
-    monkeypatch.setattr(session, "new_page", AsyncMock(return_value=page), raising=False)
-    session._target_id = None
-    monkeypatch.setattr(
-        session,
-        "get_current_target_info",
-        AsyncMock(return_value={"target_id": "fallback-target"}),
-        raising=False,
-    )
+    session.new_page = AsyncMock(return_value=page)
+    session.get_current_target_info = AsyncMock(return_value={"target_id": "fallback-target"})
     monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock(return_value=session))
 
     result = await open_url("https://example.com", browser_session=session)
