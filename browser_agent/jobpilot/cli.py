@@ -11,6 +11,7 @@ from pathlib import Path
 from .application import build_application_report_from_result
 from .documents import write_resume_docx
 from .job_source import get_job_posting_xlsx
+from .memory import learned_answers, merge_profile
 from .models import ContactProfile, JobDescription
 from .profile import extract_resume_text, infer_contact_profile, load_contact_profile
 from .workflow import JobPilot, extract_job_description_from_url
@@ -27,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--url", default="")
     prepare.add_argument("--resume", required=True)
     prepare.add_argument("--profile", default="")
+    prepare.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
     prepare.add_argument("--model", default="gemini-3.6-flash")
     prepare.add_argument("--max-steps", type=int, default=80)
     prepare.add_argument("--output-dir", default="")
@@ -37,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     workbook.add_argument("--row", required=True, type=int)
     workbook.add_argument("--resume", required=True)
     workbook.add_argument("--profile", default="")
+    workbook.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
     workbook.add_argument("--model", default="gemini-3.6-flash")
     workbook.add_argument("--max-steps", type=int, default=80)
     workbook.add_argument("--output-dir", default="")
@@ -50,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--url", required=True)
     apply.add_argument("--resume", required=True)
     apply.add_argument("--profile", default="")
+    apply.add_argument("--memory", default="", help="Persistent JobPilot memory JSON")
     apply.add_argument("--model", default="gemini-3.6-flash")
     apply.add_argument("--max-steps", type=int, default=80)
     return parser
@@ -59,8 +63,18 @@ def _load_inputs(args: argparse.Namespace) -> tuple[JobDescription, str, Contact
     description = Path(args.description).expanduser().read_text(encoding="utf-8").strip()
     resume_text = extract_resume_text(args.resume)
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
+    profile = merge_profile(profile, args.memory)
     job = JobDescription(title=args.title, company=args.company, description=description, url=args.url)
     return job, resume_text, profile
+
+
+def _apply_memory(plan, memory_path: str):
+    if not memory_path:
+        return plan
+    answers = dict(plan.answers)
+    for question, answer in learned_answers(memory_path).items():
+        answers.setdefault(question, answer)
+    return replace(plan, answers=answers)
 
 
 def _write_artifacts(plan, output_dir: str) -> dict[str, str]:
@@ -91,6 +105,7 @@ def _plan_output(plan, artifacts: dict[str, str]) -> dict[str, object]:
         "cover_letter": plan.cover_letter,
         "artifacts": artifacts,
         "auto_submit": plan.auto_submit,
+        "learned_answers": len(plan.answers),
     }
 
 
@@ -98,6 +113,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
     posting = get_job_posting_xlsx(args.file, args.row)
     resume_text = extract_resume_text(args.resume)
     profile = load_contact_profile(args.profile) if args.profile else infer_contact_profile(resume_text)
+    profile = merge_profile(profile, args.memory)
     pilot = JobPilot(model=args.model, max_steps=args.max_steps)
     job = posting.job
     application_url = posting.application_url or posting.job.url
@@ -112,6 +128,7 @@ async def _run_workbook(args: argparse.Namespace) -> int:
         job = replace(job, url=application_url)
         extraction["verified"] = True
     plan = await pilot.prepare_plan_async(job, resume_text, profile, use_llm=not args.no_llm)
+    plan = _apply_memory(plan, args.memory)
     output = {
         "source": {
             "file": str(Path(args.file).expanduser()),
@@ -154,9 +171,11 @@ async def _run(args: argparse.Namespace) -> int:
     pilot = JobPilot(model=args.model, max_steps=args.max_steps)
     if args.command == "prepare":
         plan = await pilot.prepare_plan_async(job, resume_text, profile, use_llm=not args.no_llm)
+        plan = _apply_memory(plan, args.memory)
         print(json.dumps(_plan_output(plan, _write_artifacts(plan, args.output_dir)), indent=2))
         return 0
     plan = pilot.prepare_plan(job, resume_text, profile)
+    plan = _apply_memory(plan, args.memory)
     result = await pilot.apply_to_url(plan, resume_path=args.resume)
     final_result = getattr(result, "final_result", None)
     output = str(final_result()) if callable(final_result) else str(result)
