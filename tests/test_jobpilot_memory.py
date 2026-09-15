@@ -3,6 +3,7 @@
 import json
 
 from browser_agent.jobpilot.memory import (
+    default_memory_path,
     learned_answers,
     load_memory,
     lookup_answer,
@@ -11,6 +12,12 @@ from browser_agent.jobpilot.memory import (
     remember_user_value,
 )
 from browser_agent.jobpilot.models import ContactProfile
+
+
+def test_default_memory_path_is_user_scoped() -> None:
+    path = default_memory_path()
+    assert path.name == "memory.json"
+    assert "JobPilot" in path.parts
 
 
 def test_user_profile_value_overrides_resume_value(tmp_path) -> None:
