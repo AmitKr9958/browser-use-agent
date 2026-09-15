@@ -17,7 +17,7 @@ _PHONE = re.compile(r"(?<!\d)(?:\+?\d[\d ()-]{8,}\d)(?!\d)")
 
 
 def extract_resume_text(path: str | Path) -> str:
-    """Extract text from a PDF, DOCX, or plain-text resume."""
+    """Extract text from a PDF, DOCX, or plain-text resume, including DOCX tables."""
     source = Path(path).expanduser()
     if not source.is_file():
         raise FileNotFoundError(f"resume not found: {source}")
@@ -26,7 +26,13 @@ def extract_resume_text(path: str | Path) -> str:
         return "\n".join(page.extract_text() or "" for page in PdfReader(str(source)).pages).strip()
     if suffix == ".docx":
         document = Document(str(source))
-        return "\n".join(paragraph.text for paragraph in document.paragraphs).strip()
+        chunks = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                if any(cells):
+                    chunks.append(" | ".join(cells))
+        return "\n".join(chunks).strip()
     if suffix in {".txt", ".md"}:
         return source.read_text(encoding="utf-8").strip()
     raise ValueError("unsupported resume format; use PDF, DOCX, TXT, or MD")
