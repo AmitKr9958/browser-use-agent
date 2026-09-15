@@ -20,7 +20,8 @@ from .models import ContactProfile
 
 _SENSITIVE = re.compile(
     r"(?:password|passcode|otp|one[- ]?time|mfa|2fa|captcha|aadhaar|pan\b|uan\b|passport|"
-    r"driver.?s? license|driving license|government.?id|social security|ssn\b|bank|routing|credit card|debit card)",
+    r"driver.?s? license|driving license|government.?id|social security|ssn\b|tax id|"
+    r"national id|identity (?:number|document)|bank|routing|credit card|debit card)",
     re.I,
 )
 
@@ -30,6 +31,7 @@ class LearnedAnswer:
     answer: str
     source: str = "user"
     updated_at: str = ""
+    confidence: str = "explicit"
 
 
 def _key(value: str) -> str:
@@ -75,6 +77,35 @@ def learned_answers(path: str | Path | None) -> dict[str, str]:
     }
 
 
+def lookup_answer(path: str | Path | None, question: str) -> str | None:
+    """Find a learned answer using normalized semantic-key equality."""
+    wanted = _key(question)
+    if not wanted or not path:
+        return None
+    answers = learned_answers(path)
+    if wanted in answers:
+        return answers[wanted]
+    for key, value in answers.items():
+        if _key(key) == wanted:
+            return value
+    return None
+
+
+def _write(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".jobpilot-memory-", dir=str(path.parent), text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def remember_user_value(path: str | Path, field: str, value: str) -> bool:
     """Persist an explicit user correction; return False for unsafe/sensitive data."""
     field = field.strip()
@@ -88,17 +119,22 @@ def remember_user_value(path: str | Path, field: str, value: str) -> bool:
     if field in profile_fields:
         data["profile"][field] = value
     else:
-        data["answers"][_key(field)] = asdict(LearnedAnswer(field, value, "user", now))
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".jobpilot-memory-", dir=str(destination.parent), text=True)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, destination)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        data["answers"][_key(field)] = asdict(LearnedAnswer(field, value, "user", now, "explicit"))
+    _write(destination, data)
     return True
+
+
+def remember_correction(
+    path: str | Path,
+    *,
+    field: str,
+    before_value: str,
+    after_value: str,
+    reason: str = "explicit user correction",
+) -> bool:
+    """Persist a browser correction only after explicit user attribution."""
+    if not field.strip() or not after_value.strip() or _SENSITIVE.search(field):
+        return False
+    if before_value.strip() == after_value.strip():
+        return False
+    return remember_user_value(path, field, after_value)
