@@ -26,6 +26,22 @@ async def _ensure_session_started(session: Any) -> Any:
     return session
 
 
+def _target_id_from_session(session: Any) -> str:
+    """Read Browser Use's stable target identity without triggering AsyncMock attributes."""
+    return str(getattr(session, "_target_id", "") or "").strip()
+
+
+def _target_id_from_page(page: Any) -> str:
+    """Read an explicitly supplied page target id, ignoring mock placeholder values."""
+    value = getattr(page, "target_id", None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    value = getattr(page, "_target_id", None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
 async def open_url(url: str, browser_session: Any | None = None) -> dict[str, str]:
     """Open ``url`` in a new browser tab and return stable target metadata."""
     if not url.strip():
@@ -33,16 +49,19 @@ async def open_url(url: str, browser_session: Any | None = None) -> dict[str, st
     session = await _ensure_session_started(browser_session or connect_browser_harness())
     page = await _await_if_needed(cast(Any, session).new_page(url.strip()))
 
-    target_id = str(getattr(page, "target_id", "") or getattr(page, "_target_id", ""))
+    # Browser Use's BrowserSession owns the stable target identity. Prefer it
+    # over arbitrary page attributes so AsyncMock/Pydantic test doubles cannot
+    # turn an absent target id into a string such as ``<AsyncMock ...>``.
+    target_id = _target_id_from_session(session) or _target_id_from_page(page)
     if not target_id:
         get_current_target_info = getattr(session, "get_current_target_info", None)
         if callable(get_current_target_info):
             info = await _await_if_needed(get_current_target_info())
             if isinstance(info, dict):
-                target_id = str(info.get("targetId", "") or info.get("target_id", "") or info.get("id", ""))
+                target_id = str(info.get("targetId", "") or info.get("target_id", "") or info.get("id", "") or "").strip()
 
     return {
-        "target_id": target_id.strip(),
+        "target_id": target_id,
         "title": str(await _await_if_needed(cast(Any, page).get_title()) or ""),
         "url": str(await _await_if_needed(cast(Any, page).get_url()) or ""),
     }
