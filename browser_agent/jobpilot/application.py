@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .audit import audit_metadata, parse_field_audits, parse_structured_result
+
 
 _SUBMISSION_MARKERS = (
     "application submitted",
@@ -23,8 +25,6 @@ _BLOCKER_PATTERNS = (
     re.compile(r"\bpayment required\b", re.IGNORECASE),
     re.compile(r"\bidentity verification\b", re.IGNORECASE),
 )
-# Generic words such as "saved" or "filled" are intentionally excluded: an
-# agent can say those words without proving that a browser control changed.
 _EXPLICIT_VERIFICATION_MARKERS = (
     "field value verified",
     "fields verified",
@@ -47,7 +47,6 @@ _MAX_RAW_RESULT = 8_000
 
 
 def _redact_secret(match: re.Match[str]) -> str:
-    """Redact the entire secret assignment without leaking its value."""
     key = match.group(1)
     return f"{key}: [REDACTED]"
 
@@ -96,7 +95,6 @@ def build_application_report(
     raw_result: str = "",
     metadata: dict[str, Any] | None = None,
 ) -> ApplicationReport:
-    """Construct and validate an application report."""
     report = ApplicationReport(
         status=status,
         target_url=target_url,
@@ -112,12 +110,7 @@ def build_application_report(
 
 
 def build_application_report_from_result(*, target_url: str, raw_result: str) -> ApplicationReport:
-    """Convert an agent result into a conservative, privacy-aware report.
-
-    A browser-agent response is not proof that fields were actually changed. The
-    report is only marked ``completed`` when an explicit verification signal is
-    present. Submission language is treated as a safety failure.
-    """
+    """Convert an agent result into a conservative, privacy-aware report."""
     text = raw_result.strip()
     lowered = text.lower()
 
@@ -142,6 +135,44 @@ def build_application_report_from_result(*, target_url: str, raw_result: str) ->
             blockers=blockers,
             raw_result=text,
             metadata={"verification_signal": False},
+        )
+
+    structured = parse_structured_result(text)
+    if structured is not None:
+        fields = parse_field_audits(structured)
+        metadata = audit_metadata(structured, fields)
+        verified_fields = tuple(field.label for field in fields if field.verified)
+        skipped_fields = tuple(field.label for field in fields if field.status in {"skipped", "manual", "conflict", "unmapped"})
+        structured_blockers = tuple(
+            str(item).strip() for item in structured.get("blockers", [])
+            if str(item).strip()
+        ) if isinstance(structured.get("blockers", []), list) else ()
+        if structured_blockers:
+            return build_application_report(
+                status="blocked",
+                target_url=target_url,
+                filled_fields=verified_fields,
+                skipped_fields=skipped_fields,
+                blockers=structured_blockers,
+                raw_result=text,
+                metadata=metadata,
+            )
+        if verified_fields:
+            return build_application_report(
+                status="completed",
+                target_url=target_url,
+                filled_fields=verified_fields,
+                skipped_fields=skipped_fields,
+                raw_result=text,
+                metadata=metadata,
+            )
+        return build_application_report(
+            status="blocked",
+            target_url=target_url,
+            skipped_fields=skipped_fields,
+            blockers=("structured browser result contained no verified fields",),
+            raw_result=text,
+            metadata=metadata,
         )
 
     if not text:
