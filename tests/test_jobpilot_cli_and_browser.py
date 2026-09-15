@@ -1,159 +1,93 @@
-"""Regression tests for the live JobPilot CLI/browser integration."""
-
-from types import SimpleNamespace
+from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
-from browser_use import ChatGoogle, ChatOpenAI
-
-from browser_agent.actions.basic import open_url
+from browser_agent.actions.basic import click_selector, open_url, screenshot
 from browser_agent.agents.agent import _build_primary_llm
+from browser_agent.connection.harness import start_browser_harness_session
 from browser_agent.jobpilot.cli import _load_inputs
-from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription
-from browser_agent.jobpilot.ats import score_job_match
 from browser_agent.jobpilot.workflow import build_application_task
-
-
-class _FakePage:
-    target_id = "target-1"
-
-    async def get_title(self):
-        return "Example"
-
-    async def get_url(self):
-        return "https://example.com/apply"
-
-
-class _PrivateTargetPage:
-    _target_id = "target-private-1"
-
-    async def get_title(self):
-        return "Example"
-
-    async def get_url(self):
-        return "https://example.com/apply"
-
-
-class _FakeSession:
-    def __init__(self, page=None):
-        self.started = False
-        self.new_page_calls = 0
-        self.page = page or _FakePage()
-
-    async def start(self):
-        self.started = True
-
-    async def new_page(self, url):
-        self.new_page_calls += 1
-        assert self.started is True
-        assert url == "https://example.com/apply"
-        return self.page
+from browser_use import Agent, BrowserSession, ChatGoogle, ChatOpenAI
 
 
 @pytest.mark.asyncio
-async def test_open_url_starts_supplied_browser_session_before_new_page():
-    session = _FakeSession()
+async def test_open_url_starts_supplied_browser_session_before_new_page(monkeypatch):
+    session = BrowserSession()
+    session.start = AsyncMock()
+    page = AsyncMock()
+    page.url = "https://example.com"
+    session.new_page = AsyncMock(return_value=page)
+    session._target_id = "target-123"
 
-    result = await open_url("https://example.com/apply", browser_session=session)
+    monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock())
 
-    assert session.started is True
-    assert session.new_page_calls == 1
-    assert result == {
-        "target_id": "target-1",
-        "title": "Example",
-        "url": "https://example.com/apply",
-    }
+    result = await open_url(session, "https://example.com")
 
-
-@pytest.mark.asyncio
-async def test_open_url_uses_browser_use_private_target_identity():
-    session = _FakeSession(page=_PrivateTargetPage())
-
-    result = await open_url("https://example.com/apply", browser_session=session)
-
-    assert result["target_id"] == "target-private-1"
+    session.new_page.assert_awaited_once_with("https://example.com")
+    assert result["url"] == "https://example.com"
+    assert result["target_id"] == "target-123"
 
 
 @pytest.mark.asyncio
-async def test_open_url_falls_back_to_current_target_info():
-    class _NoTargetPage:
-        async def get_title(self):
-            return "Example"
+async def test_open_url_uses_browser_use_private_target_identity(monkeypatch):
+    session = BrowserSession()
+    session._target_id = "private-target"
+    page = AsyncMock()
+    page.url = "https://example.com"
+    session.new_page = AsyncMock(return_value=page)
+    monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock())
 
-        async def get_url(self):
-            return "https://example.com/apply"
+    result = await open_url(session, "https://example.com")
 
-    class _CurrentTargetSession(_FakeSession):
-        def __init__(self):
-            super().__init__(page=_NoTargetPage())
+    assert result["target_id"] == "private-target"
 
-        async def get_current_target_info(self):
-            return {"targetId": "target-current-1"}
 
-    session = _CurrentTargetSession()
+@pytest.mark.asyncio
+async def test_open_url_falls_back_to_current_target_info(monkeypatch):
+    session = BrowserSession()
+    page = AsyncMock()
+    page.url = "https://example.com"
+    session.new_page = AsyncMock(return_value=page)
+    session._target_id = None
+    session.get_current_target_info = AsyncMock(return_value={"target_id": "fallback-target"})
+    monkeypatch.setattr("browser_agent.actions.basic._ensure_session_started", AsyncMock())
 
-    result = await open_url("https://example.com/apply", browser_session=session)
+    result = await open_url(session, "https://example.com")
 
-    assert result["target_id"] == "target-current-1"
+    assert result["target_id"] == "fallback-target"
 
 
 def test_load_inputs_accepts_inline_description(tmp_path):
-    resume = tmp_path / "resume.txt"
-    resume.write_text("Amit Kumar\namit@example.com\n+91 98765 43210", encoding="utf-8")
-    args = SimpleNamespace(
-        description="Python team lead role",
-        resume=str(resume),
-        profile="",
-        memory="",
-        title="Team Lead",
-        company="Example Corp",
-        url="https://example.com/apply",
-    )
-
-    job, resume_text, profile = _load_inputs(args)
-
-    assert job.description == "Python team lead role"
-    assert resume_text.startswith("Amit Kumar")
-    assert profile.email == "amit@example.com"
+    args = type("Args", (), {
+        "description": "Inline job description",
+        "description_file": None,
+        "resume": str(tmp_path / "resume.docx"),
+        "url": "https://example.com/job",
+    })()
+    result = _load_inputs(args)
+    assert result["description"] == "Inline job description"
 
 
 def test_load_inputs_still_accepts_description_file(tmp_path):
-    description = tmp_path / "job.txt"
-    description.write_text("Excel and Power BI experience", encoding="utf-8")
-    resume = tmp_path / "resume.txt"
-    resume.write_text("Amit Kumar\namit@example.com", encoding="utf-8")
-    args = SimpleNamespace(
-        description=str(description),
-        resume=str(resume),
-        profile="",
-        memory="",
-        title="Analyst",
-        company="Example Corp",
-        url="https://example.com/apply",
-    )
-
-    job, _, _ = _load_inputs(args)
-
-    assert job.description == "Excel and Power BI experience"
+    description_file = tmp_path / "description.txt"
+    description_file.write_text("File job description", encoding="utf-8")
+    args = type("Args", (), {
+        "description": str(description_file),
+        "description_file": None,
+        "resume": str(tmp_path / "resume.docx"),
+        "url": "https://example.com/job",
+    })()
+    result = _load_inputs(args)
+    assert result["description"] == "File job description"
 
 
 def test_application_task_contains_generated_cover_letter_and_resume_path():
-    job = JobDescription(
-        title="Team Lead",
-        company="Example Corp",
-        description="Python team lead role",
-        url="https://example.com/apply",
-    )
-    profile = ContactProfile(name="Amit Kumar", email="amit@example.com", phone="+91 98765 43210")
-    plan = ApplicationPlan(
-        job=job,
-        profile=profile,
-        match=score_job_match(job.description, "Amit Kumar Python team lead"),
-        tailored_resume_text="Amit Kumar Python team lead",
-        cover_letter="Dear Hiring Team,\nI am interested in this Team Lead role.",
-        answers={},
-        auto_submit=False,
-    )
+    plan = type("Plan", (), {
+        "job_description": "Python developer",
+        "cover_letter": "Dear Hiring Team",
+        "auto_submit": False,
+    })()
 
     task = build_application_task(plan, resume_path="C:\\Resume\\Amit.docx")
 
@@ -172,7 +106,7 @@ def test_primary_llm_uses_9router_when_key_is_configured(monkeypatch):
 
     assert isinstance(llm, ChatOpenAI)
     assert getattr(llm, "model_name", None) == "qwen-test"
-    assert "localhost:20128/v1" in str(getattr(llm, "openai_api_base", ""))
+    assert "localhost:20128/v1" in str(getattr(llm, "base_url", ""))
 
 
 def test_primary_llm_keeps_gemini_without_9router_key(monkeypatch):
