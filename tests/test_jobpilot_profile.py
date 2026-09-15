@@ -17,6 +17,18 @@ def test_docx_table_content_is_included(tmp_path) -> None:
     assert "Example Technologies" in text
 
 
+def test_docx_header_and_footer_content_are_included(tmp_path) -> None:
+    path = tmp_path / "resume-header-footer.docx"
+    document = Document()
+    document.sections[0].header.paragraphs[0].text = "Candidate | LinkedIn"
+    document.add_paragraph("Core Experience")
+    document.sections[0].footer.paragraphs[0].text = "candidate@example.com"
+    document.save(path)
+    text = extract_resume_text(path)
+    assert "Candidate | LinkedIn" in text
+    assert "candidate@example.com" in text
+
+
 def test_contact_inference_remains_conservative() -> None:
     profile = infer_contact_profile("Candidate Name\nname@example.com\n+91 98765 43210")
     assert profile.name == "Candidate Name"
