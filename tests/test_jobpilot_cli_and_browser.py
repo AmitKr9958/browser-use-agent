@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from browser_use import ChatGoogle, ChatOpenAI
+
 from browser_agent.actions.basic import open_url
+from browser_agent.agents.agent import _build_primary_llm
 from browser_agent.jobpilot.cli import _load_inputs
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription
 from browser_agent.jobpilot.ats import score_job_match
@@ -158,3 +161,21 @@ def test_application_task_contains_generated_cover_letter_and_resume_path():
     assert "SUPPLIED GENERATED COVER LETTER" in task
     assert "Dear Hiring Team" in task
     assert "Never submit the application." in task
+
+
+def test_primary_llm_uses_9router_when_key_is_configured(monkeypatch):
+    monkeypatch.setenv("NINEROUTER_API_KEY", "test-router-key")
+    monkeypatch.setenv("NINEROUTER_BASE_URL", "http://localhost:20128/v1")
+    monkeypatch.setenv("NINEROUTER_MODEL", "qwen-test")
+
+    llm = _build_primary_llm("gemini-3.6-flash")
+
+    assert isinstance(llm, ChatOpenAI)
+    assert getattr(llm, "model_name", None) == "qwen-test"
+    assert "localhost:20128/v1" in str(getattr(llm, "openai_api_base", ""))
+
+
+def test_primary_llm_keeps_gemini_without_9router_key(monkeypatch):
+    monkeypatch.delenv("NINEROUTER_API_KEY", raising=False)
+    llm = _build_primary_llm("gemini-3.6-flash")
+    assert isinstance(llm, ChatGoogle)
