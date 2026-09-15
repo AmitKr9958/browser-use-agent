@@ -48,6 +48,33 @@ class StartableFakeSession(FakeSession):
         self._cdp_client_root = object()
 
 
+class FakeSwitchEvent:
+    """Small stand-in for Browser Use's awaitable event result."""
+
+    def __init__(self, target_id: str) -> None:
+        self.target_id = target_id
+
+    def __await__(self):
+        async def wait():
+            return self.target_id
+
+        return wait().__await__()
+
+    async def event_result(self, *, raise_if_any: bool, raise_if_none: bool):
+        return self.target_id
+
+
+class EventBusFakeSession(FakeSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.event_bus = self
+
+    def dispatch(self, event):
+        self.active = next(i for i, tab in enumerate(self.tabs) if tab.target_id == event.target_id)
+        self.agent_focus_target_id = event.target_id
+        return FakeSwitchEvent(event.target_id)
+
+
 @pytest.mark.asyncio
 async def test_list_tabs_returns_stable_records():
     manager = TabManager(FakeSession())
@@ -75,6 +102,16 @@ async def test_select_tab_by_target_id_verifies_focus():
     selected = await manager.select_tab(TabSelector(target_id="target-router"))
     assert selected.target_id == "target-router"
     assert session.active == 2
+
+
+@pytest.mark.asyncio
+async def test_select_tab_uses_event_bus_and_verifies_event_result():
+    session = EventBusFakeSession()
+    manager = TabManager(session)
+    selected = await manager.select_tab(TabSelector(target_id="target-router"))
+    assert selected.target_id == "target-router"
+    assert session.active == 2
+    assert session.agent_focus_target_id == "target-router"
 
 
 @pytest.mark.asyncio
