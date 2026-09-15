@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from browser_agent.actions.basic import open_url
 from browser_agent.agents.agent import run_on_tab
-from browser_agent.connection.harness import connect_browser_harness
+from browser_agent.connection.harness import start_browser_harness_session, stop_browser_harness_session
 from browser_agent.models.india import DEFAULT_INDIA_RUNTIME
 from browser_agent.models.policy import DEFAULT_SENSITIVE_POLICY
 from browser_agent.tabs.models import TabSelector
@@ -96,17 +96,7 @@ Return ONLY one JSON object after the run. Do not wrap it in prose. Use exactly 
       "step": "step/page label"
     }}
   ],
-  "corrections": [
-    {{
-      "field": "field/question label",
-      "before_value": "value JobPilot had supplied",
-      "after_value": "value explicitly entered by the user",
-      "source": "user",
-      "explicit": true,
-      "reason": "why this is a confirmed user correction",
-      "step": "step/page label"
-    }}
-  ],
+  "corrections": [],
   "blockers": [],
   "final_submission_control_present": false,
   "submitted": false
@@ -178,7 +168,7 @@ async def extract_job_description_from_url(url: str, *, model: str = "gemini-3.6
     _validate_web_url(url, field_name="job URL")
     if max_steps < 1:
         raise ValueError("max_steps must be at least 1")
-    session = connect_browser_harness()
+    session = await start_browser_harness_session()
     try:
         opened = await open_url(url, browser_session=session)
         target_id = opened.get("target_id", "").strip()
@@ -195,11 +185,7 @@ async def extract_job_description_from_url(url: str, *, model: str = "gemini-3.6
         )
         return _parse_job_description_result(_history_text(history), url=url, fallback=JobDescription(title="", company="", description="", url=url))
     finally:
-        stop = getattr(session, "stop", None)
-        if callable(stop):
-            result = stop()
-            if inspect.isawaitable(result):
-                await result
+        await stop_browser_harness_session(session)
 
 
 class JobPilot:
@@ -264,7 +250,7 @@ class JobPilot:
         """Open a supplied application URL, then perform controlled autofill."""
         _validate_web_url(plan.job.url, field_name="job application URL")
         self._validate_resume_path(resume_path)
-        session = connect_browser_harness()
+        session = await start_browser_harness_session()
         try:
             opened = await open_url(plan.job.url, browser_session=session)
             target_id = opened.get("target_id", "").strip()
@@ -280,8 +266,4 @@ class JobPilot:
                 interaction_policy=DEFAULT_SENSITIVE_POLICY,
             )
         finally:
-            stop = getattr(session, "stop", None)
-            if callable(stop):
-                result = stop()
-                if inspect.isawaitable(result):
-                    await result
+            await stop_browser_harness_session(session)
