@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-
 FINAL_SUBMISSION_RE = re.compile(
     r"\b(?:submit(?:\s+application)?|apply(?:\s+now)?|send\s+application|complete\s+application|finish\s+application|finalize\s+application|send)\b",
     re.I,
@@ -21,14 +20,17 @@ SENSITIVE_RE = re.compile(
     re.I,
 )
 
+# Ordered from specific to broad. A field such as "State" is intentionally
+# represented by the generic location class; downstream code must use the
+# accessible question/value rather than assuming one physical address field.
 FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
-    "name": ("full name", "first name", "last name", "given name", "family name"),
+    "name": ("full name", "first name", "last name", "given name", "family name", "legal name", "preferred name"),
     "email": ("email", "e-mail"),
     "phone": ("phone", "mobile", "telephone", "contact number"),
-    "location": ("city", "location", "address", "state", "country", "postal", "zip", "pincode"),
+    "location": ("address line 1", "address line 2", "street address", "city", "location", "address", "state", "province", "country", "postal", "zip", "pincode"),
     "linkedin": ("linkedin",),
-    "portfolio": ("portfolio", "personal website", "website"),
-    "resume": ("resume", "cv", "curriculum vitae"),
+    "portfolio": ("portfolio", "personal website", "website", "github profile"),
+    "resume": ("resume", "cv", "curriculum vitae", "upload resume", "upload cv"),
     "cover_letter": ("cover letter", "covering letter", "motivation", "supporting statement"),
     "work_authorization": ("authorized to work", "work authorization", "right to work"),
     "sponsorship": ("sponsorship", "sponsor", "visa"),
@@ -79,7 +81,7 @@ def is_final_submission_control(label: str) -> bool:
 def detect_ats_family(url: str) -> str:
     """Identify a known career platform from the hostname without assuming selectors."""
     host = urlparse(url).hostname or ""
-    host = host.casefold()
+    host = host.casefold().rstrip(".")
     for family, domains in ATS_FAMILIES.items():
         if any(host == domain or host.endswith("." + domain) for domain in domains):
             return family
@@ -95,7 +97,7 @@ Detected career platform family: {family}
 
 FIELD DISCOVERY
 - Inspect the complete accessible form, not only the first viewport.
-- Use visible label text, associated labels, aria-label, placeholder, name, and surrounding question text to identify fields.
+- Use visible label text, associated labels, aria-label, placeholder, name, autocomplete, input type, and surrounding question text to identify fields.
 - Re-scan after every safe Next/Continue/Save-and-Continue step because multi-page forms frequently replace the DOM.
 - Inspect supported same-origin/cross-origin frames and shadow-root content exposed by the browser automation layer.
 - Prefer accessible names and real user interaction over brittle CSS/XPath selectors.
@@ -103,8 +105,9 @@ FIELD DISCOVERY
 
 FIELD HANDLING
 - Map name/email/phone/location/LinkedIn/portfolio/resume/cover-letter fields to explicit supplied values only.
-- For native select, custom combobox, radio, checkbox, date, file-upload, and rich-text controls, interact through the visible control and verify the resulting state.
+- For native select, custom combobox, autocomplete, radio groups, checkboxes, date controls, file uploads, and rich-text editors, interact through the visible control and verify the resulting value/state.
 - Preserve any non-empty field unless replacing it is explicitly required and the replacement value is supplied.
+- Treat existing non-empty values as authoritative page state; record conflicts instead of silently overwriting them.
 - For resume upload, verify the selected filename or attached-file state before progressing.
 - For cover-letter fields, use the supplied generated cover letter only; never invent missing personal facts.
 - If a field cannot be mapped confidently, leave it unchanged and report it.
@@ -116,11 +119,13 @@ SENSITIVE / MANUAL REVIEW
 
 NAVIGATION
 - Safe navigation controls may include Next, Continue, Save, Save and Continue, or similar controls when they are clearly non-final.
-- Never click a control classified as final submission, including Submit Application, Apply, Send Application, Complete Application, Finish Application, or equivalent wording.
+- Before clicking a navigation control, verify it is not a final-submission control and that no unresolved mandatory sensitive/unknown question is being bypassed.
+- Never click a control classified as final submission, including Submit Application, Apply, Send Application, Complete Application, Finish Application, Finalize, or equivalent wording.
 - If the page reaches final review/confirmation, stop and return a field-by-field verification report.
 
 VERIFICATION
 - After every field interaction, verify the visible value/state when possible.
-- Before stopping, report: page/step, filled fields, verified fields, skipped fields with reasons, upload status, blockers, and whether a final submission control remains untouched.
+- Re-read the complete page after dynamic updates and before each safe navigation step.
+- Before stopping, report: page/step, filled fields, verified fields, skipped fields with reasons, conflicts, upload status, blockers, and whether a final submission control remains untouched.
 - Never claim completion solely because an agent action was attempted; completion requires observed verification evidence.
 """.strip()
