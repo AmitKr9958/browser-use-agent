@@ -17,6 +17,7 @@ from browser_agent.tabs.models import TabSelector
 
 from .ats import score_job_match
 from .documents import build_cover_letter, build_cover_letter_with_llm, tailor_resume_text, tailor_resume_with_llm
+from .form_compat import build_universal_form_policy
 from .models import ApplicationPlan, ContactProfile, JobDescription
 from .questionnaire import build_questionnaire_policy
 
@@ -29,7 +30,7 @@ def _validate_web_url(url: str, *, field_name: str) -> None:
 
 
 def build_application_task(plan: ApplicationPlan, *, resume_path: str) -> str:
-    """Build a conservative Browser Use task that fills but never submits."""
+    """Build a conservative, vendor-independent Browser Use task that fills but never submits."""
     plan.validate()
     answers = "\n".join(f"- {key}: {value}" for key, value in plan.answers.items()) or "- No extra answers supplied."
     profile = plan.profile
@@ -45,22 +46,24 @@ def build_application_task(plan: ApplicationPlan, *, resume_path: str) -> str:
     }
     contact_lines = "\n".join(f"- {key}: {value or '[NOT SUPPLIED — leave blank]'}" for key, value in supplied.items())
     return f"""
-You are JobPilot, a job-application assistant.
+You are JobPilot, a production-grade job-application assistant.
 
 Target role: {plan.job.title} at {plan.job.company}
 Application URL: {plan.job.url}
 Resume file: {resume_path}
 
 OBJECTIVE
-1. Inspect the currently open application page and identify all visible application fields, including fields inside supported frames.
-2. Fill only fields for which a value is explicitly supplied below or is directly supported by the resume.
-3. Handle native inputs, custom comboboxes, radio groups, checkboxes, date fields, and file-upload controls by using their visible labels/placeholders/accessible names and then verify the resulting value.
-4. Upload the supplied resume when a resume/CV upload control exists. After upload, verify the filename is visible or the control reports the file as attached.
-5. For multi-step application wizards, you may click safe Next, Continue, Save and Continue, or Save for Later controls to progress when they are clearly not final submission controls. Re-scan and verify each new page before continuing.
-6. Automatically answer ordinary career-site questions using the questionnaire policy below. Use only answers supported by the supplied profile or resume.
-7. For legal, sponsorship, salary, demographic, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
-8. Verify filled values after interaction where the page permits.
-9. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, or equivalent submission control.
+1. Inspect the complete currently open application workflow and identify every visible application field, including fields in supported frames and web components.
+2. Fill only fields for which a value is explicitly supplied below or is directly supported by the supplied resume.
+3. Use accessible names, visible labels, placeholders, surrounding question text and actual control state. Never depend on a vendor's element IDs, class names, field order, or brittle selectors.
+4. Handle native inputs, custom comboboxes, autocomplete fields, radio groups, checkboxes, date controls, rich-text editors, and file-upload controls using real user-like interaction. Verify the resulting value/state after each interaction.
+5. Upload the supplied resume when a resume/CV upload control exists. Verify the selected filename or attached-file state. Do not upload any other file unless explicitly supplied.
+6. If a cover-letter/motivation field exists, fill it only with the supplied generated cover letter. Verify the resulting text/state.
+7. For multi-step application wizards, safely use Next, Continue, Save, or Save and Continue only when the control is clearly non-final. Re-scan the newly rendered page after every transition.
+8. Automatically answer ordinary career-site questions only when the questionnaire policy below establishes an explicit evidence-backed answer.
+9. For legal, sponsorship, salary, demographic, identity, compensation, consent, or other sensitive questions, fill only when the exact value is explicitly supplied and the question is unambiguous; otherwise leave unchanged and report it for manual review.
+10. If a mandatory question cannot be answered from supplied evidence, stop at that step and report the exact question rather than guessing.
+11. STOP at the final Review/confirmation stage and before clicking any final Submit, Apply, Send, Complete application, Finish application, or equivalent control.
 
 SUPPLIED PROFILE
 {contact_lines}
@@ -72,14 +75,28 @@ RESUME/ATS CONTEXT
 Matched keywords: {', '.join(plan.match.matched_keywords) or 'none'}
 Missing keywords for review only: {', '.join(plan.match.missing_keywords) or 'none'}
 
+{build_universal_form_policy(plan.job.url)}
+
 {build_questionnaire_policy()}
+
+FINAL ACCEPTANCE REPORT
+Return a concise structured report containing:
+- final page/step reached
+- each field filled and whether its value/state was verified
+- each skipped field and exact reason
+- resume upload verification
+- cover-letter verification
+- any blocker (CAPTCHA, login, MFA/OTP, payment, identity verification, unsupported control, inaccessible frame, etc.)
+- whether a final submission control was found and left untouched
+- overall status: COMPLETED_REVIEW_READY, BLOCKED_MANUAL_REVIEW, or FAILED_VERIFICATION
 
 SAFETY
 - Never invent personal information, employment history, education, dates, salary, authorization, sponsorship, identity numbers, passwords, OTPs, or demographic answers.
 - Never submit the application.
+- Never click a final submission control even if the page says it is required to finish.
 - Stop at CAPTCHA, MFA/OTP, login, payment, or identity-verification steps and report the blocker.
 - If no form fields are exposed, report the page state and do not claim autofill succeeded.
-- Do not claim success unless the field interaction or upload is visibly verified.
+- Do not claim success unless field interactions and uploads are visibly verified.
 """.strip()
 
 
@@ -203,7 +220,14 @@ class JobPilot:
     async def apply_to_open_page(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Fill the already-open application page and stop before submission."""
         self._validate_resume_path(resume_path)
-        return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(index=0), model=self.model, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
+        return await run_on_tab(
+            build_application_task(plan, resume_path=resume_path),
+            TabSelector(index=0),
+            model=self.model,
+            max_steps=self.max_steps,
+            india_runtime=DEFAULT_INDIA_RUNTIME,
+            interaction_policy=DEFAULT_SENSITIVE_POLICY,
+        )
 
     async def apply_to_url(self, plan: ApplicationPlan, *, resume_path: str) -> Any:
         """Open a supplied application URL, then perform controlled autofill."""
@@ -215,7 +239,15 @@ class JobPilot:
             target_id = opened.get("target_id", "").strip()
             if not target_id:
                 raise RuntimeError("Browser did not return a target id for the application page")
-            return await run_on_tab(build_application_task(plan, resume_path=resume_path), TabSelector(target_id=target_id), model=self.model, browser_session=session, max_steps=self.max_steps, india_runtime=DEFAULT_INDIA_RUNTIME, interaction_policy=DEFAULT_SENSITIVE_POLICY)
+            return await run_on_tab(
+                build_application_task(plan, resume_path=resume_path),
+                TabSelector(target_id=target_id),
+                model=self.model,
+                browser_session=session,
+                max_steps=self.max_steps,
+                india_runtime=DEFAULT_INDIA_RUNTIME,
+                interaction_policy=DEFAULT_SENSITIVE_POLICY,
+            )
         finally:
             stop = getattr(session, "stop", None)
             if callable(stop):
