@@ -3,11 +3,29 @@
 from pathlib import Path
 
 from browser_agent.jobpilot.application import build_application_report_from_result
+from browser_agent.jobpilot.cli import build_parser
 from browser_agent.jobpilot.models import ApplicationPlan, ContactProfile, JobDescription, MatchScore
 from browser_agent.jobpilot.workflow import build_application_task
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jobpilot_dummy_application.html"
+
+
+def test_prepare_cli_has_bounded_default_step_budget() -> None:
+    args = build_parser().parse_args(
+        [
+            "prepare",
+            "--title",
+            "Data Analyst",
+            "--company",
+            "Example India Pvt Ltd",
+            "--description",
+            "dummy.txt",
+            "--resume",
+            "dummy-resume.pdf",
+        ]
+    )
+    assert args.max_steps == 80
 
 
 def test_dummy_application_contains_expected_review_and_sensitive_fields() -> None:
