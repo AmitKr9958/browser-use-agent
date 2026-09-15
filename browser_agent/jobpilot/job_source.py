@@ -23,6 +23,7 @@ class JobPostingRow:
     key_matching_skills: str = ""
     date_found: str = ""
     job_posting_date: str = ""
+    application_url: str = ""
 
 
 def _text(value: Any) -> str:
@@ -78,7 +79,18 @@ def load_job_postings_xlsx(path: str | Path) -> list[JobPostingRow]:
             if not title or not company or not url:
                 raise ValueError(f"row {row_number}: Company Name, Job Title and Job Posting URL are required")
             skills = get("Key Matching Skills") if "Key Matching Skills" in index else ""
-            postings.append(JobPostingRow(row_number=row_number, job=JobDescription(title=title, company=company, description=skills, url=url, location=get("Location") if "Location" in index else ""), match_score=_score(values[index["Match Score"]]) if "Match Score" in index and index["Match Score"] < len(values) else None, key_matching_skills=skills, date_found=get("Date Found") if "Date Found" in index else "", job_posting_date=get("Job Posting Date") if "Job Posting Date" in index else ""))
+            application_url = get("Application URL") if "Application URL" in index else ""
+            postings.append(
+                JobPostingRow(
+                    row_number=row_number,
+                    job=JobDescription(title=title, company=company, description=skills, url=url, location=get("Location")),
+                    match_score=_score(values[index["Match Score"]]) if "Match Score" in index and index["Match Score"] < len(values) else None,
+                    key_matching_skills=skills,
+                    date_found=get("Date Found") if "Date Found" in index else "",
+                    job_posting_date=get("Job Posting Date") if "Job Posting Date" in index else "",
+                    application_url=application_url,
+                )
+            )
         return postings
     finally:
         workbook.close()
