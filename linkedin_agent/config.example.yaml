@@ -1,40 +1,44 @@
-# Copy to config.yaml and adjust locally.
-chrome:
-  # Optional. Leave null to interactively select a system Chrome profile.
-  profile_directory: null
-
-linkedin:
-  mode: review
-  daily_caps:
-    connection_requests: 10
-    direct_messages: 10
-    comments: 10
-    likes: 25
-    posts: 2
-
-  # Personal job-search defaults. Adjust as needed.
-  job_search:
-    titles:
-      - Power BI Developer
-      - Power BI Lead
-      - Business Intelligence Developer
-      - Data Analyst
-    locations:
-      - Delhi
-      - Gurugram
-      - Noida
-      - Jaipur
-    posted_within_hours: 72
-    exclude:
-      - internship
-      - fresher
-      - unpaid
-
-  approval:
-    connection_requests: true
-    messages: true
-    comments: true
-    posts: true
-
-activity_log:
-  path: linkedin_agent/data/activity.jsonl
+{
+  "chrome": {
+    "profile_directory": null
+  },
+  "linkedin": {
+    "mode": "review",
+    "daily_caps": {
+      "connection_requests": 10,
+      "direct_messages": 10,
+      "comments": 10,
+      "likes": 25,
+      "posts": 2
+    },
+    "job_search": {
+      "titles": [
+        "Power BI Developer",
+        "Power BI Lead",
+        "Business Intelligence Developer",
+        "Data Analyst"
+      ],
+      "locations": [
+        "Delhi",
+        "Gurugram",
+        "Noida",
+        "Jaipur"
+      ],
+      "posted_within_hours": 72,
+      "exclude": [
+        "internship",
+        "fresher",
+        "unpaid"
+      ]
+    },
+    "approval": {
+      "connection_requests": true,
+      "messages": true,
+      "comments": true,
+      "posts": true
+    }
+  },
+  "activity_log": {
+    "path": "linkedin_agent/data/activity.jsonl"
+  }
+}
