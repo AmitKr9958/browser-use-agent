@@ -9,13 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
 from browser_use import Agent, Browser, ChatOpenAI
 
 
 def load_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle) or {}
+        return json.load(handle)
 
 
 def choose_profile(config: dict[str, Any]) -> str | None:
@@ -120,7 +119,7 @@ async def run(config_path: Path, task_name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LinkedIn Browser Use agent")
-    parser.add_argument("--config", type=Path, default=Path("linkedin_agent/config.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("linkedin_agent/config.json"))
     parser.add_argument(
         "--task",
         choices=["login-check", "job-search", "recruiter-research", "content-draft", "daily-run"],
